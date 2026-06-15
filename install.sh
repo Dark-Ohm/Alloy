@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Alloy Installer with GUI dialogs
+# No terminal required - uses zenity for user interaction
+
 set -euo pipefail
 
 APP_NAME="alloy"
@@ -7,7 +10,7 @@ POLICY_DIR="/usr/share/polkit-1/actions"
 POLICY_FILE="com.github.alloy.fish.policy"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# --- Colors ---
+# Colors for console output (fallback)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -17,99 +20,116 @@ info()  { echo -e "${GREEN}[✓]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 error() { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
-# --- Pre-flight checks ---
-check_deps() {
-    local missing=()
-    for cmd in node npm cargo rustc fish; do
-        command -v "$cmd" &>/dev/null || missing+=("$cmd")
-    done
-    if (( ${#missing[@]} )); then
-        error "Missing required tools: ${missing[*]}"
+# --- Check for zenity ---
+if ! command -v zenity &>/dev/null; then
+    warn "zenity not found - installing..."
+    if command -v pkexec &>/dev/null; then
+        pkexec pacman -S --noconfirm zenity
+    else
+        error "Cannot install zenity - please run: sudo pacman -S zenity"
     fi
-    info "All build dependencies found"
-}
+fi
+
+# --- Pre-flight check ---
+zenity --info \
+    --title="Alloy — Arch Package Dropper" \
+    --text="This will install Alloy on your Arch Linux system.\n\n• Build the frontend and backend\n• Install the binary to /usr/local/bin\n• Install polkit policy for privilege escalation\n• Create desktop entry in your application menu\n\nContinue?" \
+    --ok-label="Start Installation" \
+    --cancel-label="Cancel" 2>/dev/null || exit 0
+
+# --- Check build tools ---
+missing_tools=()
+for cmd in node npm cargo rustc fish; do
+    if ! command -v "$cmd" &>/dev/null; then
+        missing_tools+=("$cmd")
+    fi
+done
+
+if (( ${#missing_tools[@]} )); then
+    error "Missing required tools: ${missing_tools[*]}\nInstall with: sudo pacman -S --needed base-devel nodejs npm rust fish"
+fi
+info "All build tools found"
 
 # --- Install polkit policy ---
-install_policy() {
-    if [[ -f "$POLICY_DIR/$POLICY_FILE" ]]; then
-        info "Polkit policy already installed"
-        return
+zenity --info \
+    --title="Polkit Policy" \
+    --text="Alloy needs to install a polkit policy for privilege escalation.\n\nThis will prompt for your password." \
+    --ok-label="Continue" 2>/dev/null || true
+
+if [[ -f "$POLICY_DIR/$POLICY_FILE" ]]; then
+    info "Polkit policy already installed"
+else
+    if pkexec cp "$SCRIPT_DIR/src-tauri/policies/$POLICY_FILE" "$POLICY_DIR/" 2>/dev/null; then
+        info "Polkit policy installed"
+    else
+        warn "Polkit policy installation failed - you may need to install it manually later"
     fi
-    warn "Installing polkit policy (requires authentication)..."
-    cp "$SCRIPT_DIR/src-tauri/policies/$POLICY_FILE" "/tmp/$POLICY_FILE"
-    pkexec cp "/tmp/$POLICY_FILE" "$POLICY_DIR/$POLICY_FILE"
-    rm -f "/tmp/$POLICY_FILE"
-    info "Polkit policy installed"
-}
+fi
 
 # --- Build ---
-build_app() {
-    info "Installing npm dependencies..."
+(
+    echo "20"
+    echo "# Installing npm dependencies..."
     cd "$SCRIPT_DIR"
     npm install --prefer-offline 2>&1 | tail -1
-
-    info "Building frontend..."
-    npm run build 2>&1 | tail -3
-
-    info "Building Tauri app (this may take a few minutes)..."
-    cd "$SCRIPT_DIR"
-    cargo tauri build -- --quiet 2>&1 | grep -v "linuxdeploy" || true
-    info "Build complete"
-}
+    echo "50"
+    echo "# Building frontend..."
+    npm run build 2>&1 | tail -1
+    echo "80"
+    echo "# Building Tauri app..."
+    cargo tauri build -- --release 2>&1 | tail -1
+    echo "100"
+    echo "# Done!"
+) | zenity --progress \
+    --title="Building Alloy" \
+    --text="Installing dependencies..." \
+    --percentage=0 \
+    --auto-close \
+    --no-cancel \
+    2>/dev/null || error "Build cancelled or failed"
 
 # --- Install binary ---
-install_binary() {
-    local src="$SCRIPT_DIR/src-tauri/target/release/$APP_NAME"
-    if [[ ! -f "$src" ]]; then
-        error "Binary not found at $src — build may have failed"
-    fi
-    sudo cp "$src" "$INSTALL_DIR/$APP_NAME"
-    chmod +x "$INSTALL_DIR/$APP_NAME"
-    info "Installed $APP_NAME to $INSTALL_DIR/$APP_NAME"
-}
+BINARY="$SCRIPT_DIR/src-tauri/target/release/$APP_NAME"
+if [[ -f "$BINARY" ]]; then
+    sudo cp "$BINARY" "$INSTALL_DIR/$APP_NAME"
+    sudo chmod +x "$INSTALL_DIR/$APP_NAME"
+    info "Binary installed to $INSTALL_DIR/$APP_NAME"
+else
+    error "Build failed - binary not found at $BINARY"
+fi
 
 # --- Create desktop entry ---
-install_desktop_entry() {
-    local icon_dir="$SCRIPT_DIR/src-tauri/icons"
-    local icon_src="$icon_dir/icon.png"
-    local icon_dest="/usr/share/pixmaps/alloy.png"
-    local desktop_dir="/usr/share/applications"
-    local desktop_file="$desktop_dir/alloy.desktop"
-
-    if [[ -f "$icon_src" ]]; then
-        sudo cp "$icon_src" "$icon_dest"
-        info "Icon installed"
-    fi
-
-    sudo tee "$desktop_file" > /dev/null <<EOF
+if zenity --question \
+    --title="Desktop Entry" \
+    --text="Create desktop entry in your application menu?\n\nYou'll be able to launch Alloy from your app launcher." \
+    --ok-label="Create" \
+    --cancel-label="Skip" 2>/dev/null; then
+    
+    if "$INSTALL_DIR/$APP_NAME" --create-desktop-entry 2>/dev/null || \
+       invoke_args=("create_alloy_desktop_entry") npm run invoke 2>/dev/null; then
+        info "Desktop entry created"
+    else
+        # Manual creation
+        DESK_DIR="$HOME/.local/share/applications"
+        mkdir -p "$DESK_DIR"
+        cat > "$DESK_DIR/alloy.desktop" << EOF
 [Desktop Entry]
+Type=Application
 Name=Alloy
 Comment=Arch Package Dropper
-Exec=$INSTALL_DIR/$APP_NAME
-Icon=$icon_dest
-Type=Application
-Categories=System;Utility;
+Exec=alloy
+Icon=alloy
 Terminal=false
-StartupWMClass=alloy
+Categories=System;PackageManager;
 EOF
-    info "Desktop entry created"
-}
+        info "Desktop entry created manually"
+    fi
+fi
 
-# --- Main ---
-main() {
-    echo "════════════════════════════════════════"
-    echo "  Alloy — Arch Package Dropper Installer"
-    echo "════════════════════════════════════════"
-    echo
+zenity --info \
+    --title="Installation Complete" \
+    --text="Alloy has been installed successfully!\n\nLaunch it from your application menu or run:\n  $APP_NAME" \
+    --ok-label="Launch Alloy" 2>/dev/null && \
+    "$INSTALL_DIR/$APP_NAME" &
 
-    check_deps
-    install_policy
-    build_app
-    install_binary
-    install_desktop_entry
-
-    echo
-    info "Installation complete! Run 'alloy' from anywhere."
-}
-
-main "$@"
+info "Installation complete! Run '$APP_NAME' to start."

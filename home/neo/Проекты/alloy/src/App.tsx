@@ -9,16 +9,12 @@ import { ConfigPage } from '@/pages/ConfigPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ApplicationsPage } from '@/pages/ApplicationsPage'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 export default function App() {
   const currentPage = useStore((s) => s.currentPage)
-  const setErrorBanner = useStore((s) => s.setErrorBanner)
   const checkDeps = useStore((s) => s.checkDeps)
-
-  useEffect(() => {
-    checkDeps()
-  }, [checkDeps])
+  const setErrorBanner = useStore((s) => s.setErrorBanner)
 
   // Check for updates periodically
   useEffect(() => {
@@ -26,28 +22,26 @@ export default function App() {
       try {
         const hasUpdates = await invoke<boolean>('check_for_updates')
         if (hasUpdates) {
-          setErrorBanner('System updates available — open System Update page to review')
+          setErrorBanner('System updates available — check the System Update page')
         }
       } catch { /* noop */ }
     }
+
+    // Check on startup and every 30 minutes
     checkUpdates()
     const interval = setInterval(checkUpdates, 30 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [setErrorBanner])
 
-  // Listen for tray-triggered update check
+    return () => { clearInterval(interval) }
+  }, [checkDeps, setErrorBanner])
+
+  // Handle window close → minimize to tray
   useEffect(() => {
-    let unlisten: (() => void) | null = null
-    listen('check-updates', async () => {
-      try {
-        const hasUpdates = await invoke<boolean>('check_for_updates')
-        if (hasUpdates) {
-          setErrorBanner('System updates available — open System Update page to review')
-        }
-      } catch { /* noop */ }
-    }).then(fn => { unlisten = fn })
-    return () => { if (unlisten) unlisten() }
-  }, [setErrorBanner])
+    const unlisten = getCurrentWebview().onCloseRequested(async (event) => {
+      event.preventDefault()
+      await invoke('minimize_to_tray')
+    })
+    return () => { unlisten.then((fn: () => void) => fn()) }
+  }, [])
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-dark-900">

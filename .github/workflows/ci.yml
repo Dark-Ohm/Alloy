@@ -9,36 +9,37 @@ on:
 jobs:
   frontend:
     name: Frontend (lint, typecheck, build)
-    runs-on: ubuntu-latest
+    runs-on: arch-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      - run: npm run test
       - run: npm run build
 
   rust:
     name: Rust (test)
-    runs-on: ubuntu-latest
+    runs-on: arch-latest
     steps:
       - uses: actions/checkout@v4
 
       # Tauri 2 Linux build dependencies (needed to compile the `tauri` crate).
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            build-essential \
+          sudo pacman -Syu --noconfirm
+          sudo pacman -S --noconfirm \
+            webkit2gtk \
+            gtk3 \
+            ayatana-appindicator3 \
+            librsvg \
+            base-devel \
             file \
-            libssl-dev \
-            libxdo-dev \
+            openssl \
+            xdotool \
             patchelf
 
       - uses: dtolnay/rust-toolchain@stable
@@ -49,3 +50,17 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --lib
+
+  security:
+    name: Security scan
+    runs-on: arch-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - uses: msyshime/tauri-action@master
+        with:
+          action: 'audit'

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::fish;
 use crate::models::*;
@@ -515,4 +515,27 @@ pub async fn launch_app(desktop_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn create_alloy_desktop_entry() -> Result<String, String> {
     services::create_alloy_desktop_entry().map_err(|e| e.to_string())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Tray / Window Management
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[tauri::command]
+pub async fn minimize_to_tray(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
+    let (out, _, code) = fish::exec_one("yay -Qu 2>/dev/null | head -1").await
+        .map_err(|e| e.to_string())?;
+    let has_updates = code == 0 && !out.trim().is_empty();
+    
+    // Emit event for tray icon to show indicator
+    let _ = app.emit("update-status", serde_json::json!({ "has_updates": has_updates }));
+    Ok(has_updates)
 }
