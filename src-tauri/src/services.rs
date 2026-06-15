@@ -379,6 +379,80 @@ pub async fn fetch_pkgbuild(pkg: &str) -> anyhow::Result<PkgbuildReview> {
     }
 }
 
+/// Search system icon themes for an icon matching `name`.
+/// Returns a base64 data URI string, or None if not found.
+pub fn resolve_icon_uri(name: &str) -> Option<String> {
+    let name_lower = name.to_lowercase();
+    let home = std::env::var("HOME").unwrap_or_default();
+    let search_dirs = [
+        format!("{home}/.local/share/icons"),
+        "/usr/share/icons".into(),
+        "/usr/local/share/icons".into(),
+    ];
+    let themes = ["hicolor", "Papirus", "Papirus-Dark", "breeze", "breeze-dark", "Adwaita", "gnome", "elementary"];
+    let size_dirs = ["scalable", "128x128", "96x96", "64x64", "48x48", "256x256", "32x32", "22x22", "16x16"];
+    let exts = ["svg", "png", "xpm"];
+
+    for base in &search_dirs {
+        for theme in &themes {
+            for size in &size_dirs {
+                for ext in &exts {
+                    let p = std::path::PathBuf::from(base)
+                        .join(theme).join(size).join("apps")
+                        .join(format!("{name_lower}.{ext}"));
+                    if p.is_file() {
+                        if let Ok(bytes) = std::fs::read(&p) {
+                            if bytes.len() > 256 * 1024 { continue; }
+                            let mime = match *ext {
+                                "svg" => "image/svg+xml",
+                                "png" => "image/png",
+                                "xpm" => "image/x-xpixmap",
+                                _ => continue,
+                            };
+                            return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Also try /usr/share/pixmaps (flat, no theme/size subdirs)
+    for ext in &exts {
+        let p = std::path::PathBuf::from("/usr/share/pixmaps")
+            .join(format!("{name_lower}.{ext}"));
+        if p.is_file() {
+            if let Ok(bytes) = std::fs::read(&p) {
+                if bytes.len() > 256 * 1024 { continue; }
+                let mime = match *ext {
+                    "svg" => "image/svg+xml",
+                    "png" => "image/png",
+                    "xpm" => "image/x-xpixmap",
+                    _ => continue,
+                };
+                return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
+            }
+        }
+    }
+    None
+}
+
+/// Minimal base64 encoder (standard alphabet, no external crate needed).
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
 pub fn paccache_clean_script(k: i32) -> String { format!("paccache -r -k {k}") }
 pub fn paccache_clean_uninstalled_script() -> String { "paccache -ruk0".into() }
 pub fn get_config() -> HashMap<String, serde_json::Value> { load_config() }

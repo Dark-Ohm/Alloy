@@ -59,6 +59,23 @@ export interface SearchResult {
   version: string
   description: string
   installed?: boolean
+  votes?: number
+  popularity?: number
+}
+
+export interface AppReview {
+  id: string
+  author: string
+  rating: number
+  comment: string
+  date: string
+}
+
+export interface AppReactions {
+  likes: number
+  dislikes: number
+  userVote: 'like' | 'dislike' | null
+  reviews: AppReview[]
 }
 
 export interface DependencyNode {

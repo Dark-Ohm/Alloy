@@ -539,3 +539,8 @@ pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
     let _ = app.emit("update-status", serde_json::json!({ "has_updates": has_updates }));
     Ok(has_updates)
 }
+
+#[tauri::command]
+pub async fn resolve_icon(name: String) -> Result<Option<String>, String> {
+    Ok(services::resolve_icon_uri(&name))
+}

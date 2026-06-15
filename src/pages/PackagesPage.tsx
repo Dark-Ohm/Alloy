@@ -3,16 +3,41 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useStore } from '@/store'
 import { Card, ActionButton, ProgressBar, ErrorBanner, LogConsole, SectionTitle, Badge, Spinner } from '@/components/ui'
-import { Package, Search, Info, Trash2, Download, ArrowRight, ArrowLeft, GitBranch } from 'lucide-react'
+import { Package, Search, Info, Trash2, Download, ArrowRight, ArrowLeft, GitBranch, LayoutGrid, List } from 'lucide-react'
 import clsx from 'clsx'
+import type { SearchResult } from '@/types'
+import { StoreGrid, AppPage } from '@/components/AurStore'
 
-function parseSearch(raw: string) {
-  const results: Array<{ repo: string; name: string; version: string; description: string; installed?: boolean }> = []
+function parseSearch(raw: string): SearchResult[] {
+  const results: SearchResult[] = []
   const lines = raw.split('\n')
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\S+)\/(\S+)\s+(.+?)(\s+\[installed[^\]]*\])?$/)
+    // yay -Ss output: "aur/discord 0.0.27-1 (+287 12.34)"  (description on next line)
+    // pacman -Ss:      "extra/discord 0.0.27-1"               (description on next line)
+    // installed flag:  "extra/discord 0.0.27-1 [installed]"
+    const m = lines[i].match(/^(\S+)\/(\S+)\s+(.+)$/)
     if (m) {
-      results.push({ repo: m[1], name: m[2], version: m[3].trim(), description: lines[i + 1]?.trim() || '', installed: !!m[4] })
+      const rest = m[3]
+      // Check for [installed] suffix
+      const installedMatch = rest.match(/^(.+?)(\s+\[installed[^\]]*\])$/)
+      const withoutInstalled = installedMatch ? installedMatch[1] : rest
+      const installed = !!installedMatch
+
+      // Extract votes/popularity from "(+N N.NN)" suffix
+      const meta = withoutInstalled.match(/\(\+(\d+)\s+([\d.]+)\)\s*$/)
+      const version = meta
+        ? withoutInstalled.slice(0, withoutInstalled.lastIndexOf('(')).trim()
+        : withoutInstalled.trim()
+
+      results.push({
+        repo: m[1],
+        name: m[2],
+        version,
+        description: lines[i + 1]?.trim() || '',
+        installed,
+        votes: meta ? parseInt(meta[1], 10) : undefined,
+        popularity: meta ? parseFloat(meta[2]) : undefined,
+      })
     }
   }
   return results
@@ -33,6 +58,8 @@ export function PackagesPage() {
   const [treePkg, setTreePkg] = useState('')
   const [treeContent, setTreeContent] = useState('')
   const [treeLoading, setTreeLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'list' | 'store'>('list')
+  const [storeApp, setStoreApp] = useState<SearchResult | null>(null)
 
   const doSearch = useCallback(async () => {
     if (!query.trim()) return
@@ -113,6 +140,10 @@ export function PackagesPage() {
             <button onClick={() => setAurMode(false)} className={clsx('px-3 py-1 rounded-md text-xs font-medium transition-colors', !aurMode ? 'bg-accent-blue/20 text-accent-blue' : 'text-text-muted hover:text-text-secondary')}>Official</button>
             <button onClick={() => setAurMode(true)} className={clsx('px-3 py-1 rounded-md text-xs font-medium transition-colors', aurMode ? 'bg-accent-purple/20 text-accent-purple' : 'text-text-muted hover:text-text-secondary')}>AUR</button>
           </div>
+          <div className="flex items-center gap-1 bg-dark-700 rounded-lg p-1">
+            <button onClick={() => setViewMode('list')} title="List view" className={clsx('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-accent-blue/20 text-accent-blue' : 'text-text-muted hover:text-text-secondary')}><List size={15} /></button>
+            <button onClick={() => setViewMode('store')} title="Store view" className={clsx('p-1.5 rounded-md transition-colors', viewMode === 'store' ? 'bg-accent-purple/20 text-accent-purple' : 'text-text-muted hover:text-text-secondary')}><LayoutGrid size={15} /></button>
+          </div>
         </div>
       </Card>
 
@@ -130,6 +161,9 @@ export function PackagesPage() {
             </div>
           )}
         </div>
+        {viewMode === 'store' ? (
+          <StoreGrid results={store.searchResults} onOpen={setStoreApp} />
+        ) : (
         <div className="overflow-auto max-h-80 rounded-xl border border-dark-500">
           <table className="w-full text-xs">
             <thead className="bg-dark-700 sticky top-0">
@@ -164,6 +198,7 @@ export function PackagesPage() {
           </table>
           {store.searchResults.length === 0 && <p className="text-center text-text-muted text-sm py-8">Search for packages or click "Installed"</p>}
         </div>
+        )}
       </Card>
 
       {pkgInfo && (
@@ -205,6 +240,18 @@ export function PackagesPage() {
           <ProgressBar value={store.progress} label={store.progressLabel} />
           <div className="mt-3"><LogConsole lines={store.logs} maxHeight={180} /></div>
         </Card>
+      )}
+
+      {storeApp && (
+        <AppPage
+          pkg={storeApp}
+          installed={!!storeApp.installed}
+          busy={opRunning}
+          onClose={() => setStoreApp(null)}
+          onInstall={() => runOp('pacman_install', { packages: [storeApp.name] })}
+          onUninstall={() => runOp('pacman_remove', { packages: [storeApp.name] })}
+          onTree={(mode, name) => { setStoreApp(null); showTree(mode, name) }}
+        />
       )}
     </div>
   )

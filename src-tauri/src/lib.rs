@@ -78,6 +78,7 @@ pub fn run() {
             commands::remove_tracked_package,
             commands::minimize_to_tray,
             commands::check_for_updates,
+            commands::resolve_icon,
         ])
         .setup(|app| {
             // Create tray menu
