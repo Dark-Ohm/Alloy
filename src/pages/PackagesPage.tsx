@@ -57,7 +57,11 @@ export function PackagesPage() {
     setSearchLoading(false)
   }, [])
 
-  const toggle = (i: number) => setSelected((prev: Set<number>) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
+  const toggle = (i: number) => setSelected((prev: Set<number>) => {
+    const n = new Set(prev)
+    if (n.has(i)) n.delete(i); else n.add(i)
+    return n
+  })
   const selectedPkgs = Array.from(selected).map((i) => store.searchResults[i]?.name).filter(Boolean)
 
   const runOp = useCallback(async (cmd: string, args: Record<string, unknown>) => {
