@@ -922,3 +922,32 @@ pub fn create_alloy_desktop_entry() -> anyhow::Result<String> {
 
     Ok(desktop_path.to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn categorize_buckets_by_priority_not_tag_order() {
+        // Steam lists Network (Productivity) before Game — Gaming must still win.
+        assert_eq!(categorize("Network;FileTransfer;Game;"), "Gaming");
+        // Lutris: Game wins over PackageManager (Tools).
+        assert_eq!(categorize("Game;PackageManager;"), "Gaming");
+    }
+
+    #[test]
+    fn categorize_maps_each_bucket() {
+        assert_eq!(categorize("Game;"), "Gaming");
+        assert_eq!(categorize("Qt;KDE;AudioVideo;Player;Video;"), "Media");
+        assert_eq!(categorize("Qt;KDE;Development;TextEditor;"), "Productivity");
+        assert_eq!(categorize("Network;WebBrowser;"), "Productivity");
+        assert_eq!(categorize("Qt;KDE;Utility;Archiving;Compression;"), "Tools");
+        assert_eq!(categorize("System;FileTools;FileManager;"), "Tools");
+    }
+
+    #[test]
+    fn categorize_falls_back_to_other() {
+        assert_eq!(categorize(""), "Other");
+        assert_eq!(categorize("Qt;KDE;"), "Other"); // no recognized main category
+    }
+}

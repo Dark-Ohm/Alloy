@@ -82,14 +82,6 @@ fn parse_progress(line: &str, committed_default: u32) -> Option<(u32, u32, Strin
     Some((num, tot, name, pct))
 }
 
-// TEMP DEBUG — REVERT. Append parser decisions to a file we can read after a run.
-fn dbg_log(msg: &str) {
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/alloy-parser.log") {
-        let _ = writeln!(f, "{msg}");
-    }
-}
-
 /// Stateful, line-at-a-time parser fed from the child's stdout byte stream.
 struct PacmanParser {
     total: u32,
@@ -106,7 +98,6 @@ impl PacmanParser {
     /// Handle one output frame. `committed` = terminated by `\n` (a real line);
     /// `false` = terminated by `\r` (an in-place progress redraw).
     fn on_frame(&mut self, raw: &str, tx: &mpsc::Sender<StreamEvent>, committed: bool) {
-        dbg_log(&format!("{} {:?}", if committed { "LINE  " } else { "REDRAW" }, raw));
         if !raw.is_empty() {
             let ev = if committed {
                 StreamEvent::Stdout { line: raw.to_string() }
@@ -133,7 +124,6 @@ impl PacmanParser {
                     || trimmed.starts_with("Total")
                     || trimmed.starts_with(':');
                 if ends_block {
-                    dbg_log(&format!("  >> EMIT summary total={} names={:?}", self.total, self.summary_names));
                     let _ = tx.try_send(StreamEvent::TransactionSummary {
                         total_packages: self.total,
                         package_names: std::mem::take(&mut self.summary_names),
@@ -148,7 +138,6 @@ impl PacmanParser {
 
         // ── Per-package step / live progress ────────────────────────────
         if let Some((num, tot, name, pct)) = parse_progress(raw, if committed { 100 } else { 0 }) {
-            dbg_log(&format!("  >> EMIT progress {num}/{tot} {name} {pct}%"));
             let _ = tx.try_send(StreamEvent::Progress {
                 pkg_name: name,
                 pkg_num: num,
