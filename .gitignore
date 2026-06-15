@@ -1,0 +1,34 @@
+# Dependencies
+/node_modules
+node_modules/
+
+# Build output
+/dist
+dist/
+/src-tauri/target
+target/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Tauri-generated schemas (regenerated on build)
+/src-tauri/gen/schemas/
+
+# Local agent / tooling caches (not part of the project)
+.agent-cache/
+.waylog/
+.prompts/
+.claude/
+
+# Editor / OS junk
+*.swp
+*.swo
+*~
+.kate-swp
+*.kate-swp
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
