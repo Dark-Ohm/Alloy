@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/icon.png" width="120" alt="Alloy Logo">
+  <img src="docs/icon.png" width="100" alt="Alloy Logo">
 </p>
 
 <h1 align="center">Alloy</h1>
@@ -28,42 +28,55 @@ Alloy is a modern GUI for Arch Linux that makes package management feel effortle
 
 No terminal needed. No `makepkg` headaches. Just drag and drop.
 
-## Screenshot
-
-<p align="center">
-  <em>Screenshot coming soon — try it yourself!</em>
-</p>
-
-## Features
+## Screenshots
 
 <table>
 <tr>
-<td width="50%">
-
-### Drop Zone
-Drag & drop .deb, .rpm, .pkg.tar.zst, or .AppImage files. Alloy analyzes, builds, and installs — automatically.
-
-### Packages
-Search and install from official repos and AUR. Dependency trees, package info, one-click install.
-
-### System Update
-Full system upgrade with preview, downgrade warnings, kernel detection, and breaking-news protection via informant.
-
-</td>
-<td width="50%">
-
-### Applications
-Steam library-style launcher for every installed desktop app. Real icons, categories, one-click launch.
-
-### Maintenance
-Cache cleanup, orphan removal, config conflicts, PGP keyring repair — all with friendly UI.
-
-### Security Scan
-Checks your system against 1600+ compromised packages from the June 2026 AUR supply-chain attack.
-
-</td>
+<td align="center"><strong>Drop Zone</strong><br><em>Drag & drop any package</em></td>
+<td align="center"><strong>Install Preview</strong><br><em>One-click install</em></td>
+</tr>
+<tr>
+<td><img src="docs/screenshot-dropzone.png" alt="Drop Zone" width="100%"></td>
+<td><img src="docs/screenshot-install.png" alt="Install Preview" width="100%"></td>
+</tr>
+<tr>
+<td align="center"><strong>System Update</strong><br><em>Safe upgrades with preview</em></td>
+<td align="center"><strong>Maintenance</strong><br><em>Cache, orphans, security scan</em></td>
+</tr>
+<tr>
+<td><img src="docs/screenshot-update.png" alt="System Update" width="100%"></td>
+<td><img src="docs/screenshot-maintenance.png" alt="Maintenance" width="100%"></td>
+</tr>
+<tr>
+<td align="center"><strong>Applications</strong><br><em>Launch any installed app</em></td>
+<td align="center"><strong>PKGBUILD Review</strong><br><em>Security checks before install</em></td>
+</tr>
+<tr>
+<td><img src="docs/screenshot-apps.png" alt="Applications" width="100%"></td>
+<td><img src="docs/screenshot-pkgbuild.png" alt="PKGBUILD Review" width="100%"></td>
+</tr>
+<tr>
+<td align="center"><strong>Settings</strong><br><em>Configure everything</em></td>
+<td align="center"><strong>What's New</strong><br><em>Arch Linux news feed</em></td>
+</tr>
+<tr>
+<td><img src="docs/screenshot-settings.png" alt="Settings" width="100%"></td>
+<td><img src="docs/screenshot-news.png" alt="What's New" width="100%"></td>
 </tr>
 </table>
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Drop Zone** | Drag & drop .deb, .rpm, .pkg.tar.zst, or .AppImage files — Alloy analyzes, builds, and installs automatically |
+| **Packages** | Search and install from official repos and AUR with dependency trees and package info |
+| **System Update** | Full system upgrade with preview, downgrade warnings, kernel detection, and breaking-news protection |
+| **Applications** | Steam library-style launcher with real icons, categories, and one-click launch |
+| **Maintenance** | Cache cleanup, orphan removal, config conflicts, PGP keyring repair, and AUR malware security scan |
+| **PKGBUILD Review** | User-friendly AUR package review with security checks, dependency display, and source verification |
+| **What's New** | Arch Linux news feed with breaking update alerts |
+| **Settings** | General, cache, AUR, Wayland/KDE, and security preferences |
 
 ## Quick Start
 
@@ -97,7 +110,7 @@ npm run tauri:dev
 
 ## Security
 
-Alloy includes a built-in security scanner that checks your system against known compromised AUR packages. It scans:
+Alloy includes a built-in security scanner that checks your system against known compromised AUR packages:
 
 - ✅ Installed packages (including AUR/yay packages)
 - ✅ pacman.log history (attack window: June 9–12, 2026)
