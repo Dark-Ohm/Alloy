@@ -68,18 +68,10 @@ Checks your system against 1600+ compromised packages from the June 2026 AUR sup
 ## Quick Start
 
 ```bash
-# Clone
 git clone https://github.com/Dark-Ohm/Alloy.git
 cd Alloy
-
-# Install dependencies
 npm install
-
-# Run in dev mode
 npm run tauri:dev
-
-# Build for production
-npm run tauri:build
 ```
 
 **Requirements:** Arch Linux, Rust, Node.js, fish shell, yay (for AUR)
