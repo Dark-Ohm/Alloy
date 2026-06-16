@@ -32,3 +32,7 @@ target/
 
 # Logs
 *.log
+
+# Guard: accidental nested duplicate of the project tree (shadows vite builds)
+/home/
+_NESTED_PARKED/

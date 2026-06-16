@@ -1,6 +1,6 @@
 # ✨ Features Guide / Руководство по функциям
 
-Alloy has 6 main sections, each accessible from the sidebar.
+Alloy has 8 main sections, each accessible from the sidebar.
 
 ---
 
@@ -58,7 +58,16 @@ Search, install, and remove packages from both official repositories and AUR.
 
 ### PKGBUILD Review / Просмотр PKGBUILD
 
-For AUR packages, Alloy can fetch and display the PKGBUILD file before installation so you can review the build script.
+For AUR packages, Alloy fetches and displays the PKGBUILD in a user-friendly format before installation:
+
+- **Package info card** — name, version, description, homepage link
+- **What it installs** — architecture, license in a clean table
+- **Dependencies** — runtime deps as pills, build-only deps grouped below
+- **Security check** — verifies checksums are present, checks for pinned git commits, flags unusual download sources
+- **Download sources** — lists all source URLs with external source indicators
+- **Raw PKGBUILD** — collapsible view for power users
+
+ANSI escape codes from yay output are automatically stripped for clean display.
 
 ---
 
@@ -142,15 +151,36 @@ Remove packages that were installed as dependencies but are no longer needed:
 yay -Yc --noconfirm
 ```
 
-### .pacnew / .pacsave Files / Файлы .pacnew / .pacsave
+### Config File Conflicts / Конфликты конфигурационных файлов
 
-Scans the entire system for configuration file backups created during package upgrades. These may need manual review.
+Scans for `.pacnew` and `.pacsave` files created during package upgrades. Each conflict is analyzed and categorized:
+
+- **Safe to update** — only comments or formatting changed
+- **Review changes** — actual settings modified, worth inspecting
+- **Be careful** — sensitive system file (pacman.conf, fstab, sudoers, etc.)
+
+Features:
+- Human-readable change summaries (e.g., "2 settings added" instead of raw diff numbers)
+- Bulk "Update all safe files" button for trivial conflicts
+- Individual file cards with clear "Use new version" / "Keep mine" actions
+- Optional diff viewer for power users
 
 ### PGP Key Management / Управление ключами PGP
 
 - **Initialize** — `pacman-key --init`
 - **Populate** — `pacman-key --populate archlinux`
 - **Refresh** — `pacman-key --refresh-keys`
+
+### AUR Malware Check / Проверка на вредоносные пакеты
+
+Scans your system against the [June 2026 AUR supply-chain attack](https://github.com/lenucksi/aur-malware-check) (atomic-lockfile, js-digest). Checks:
+
+1. **Installed packages** — compares all foreign packages (including AUR/yay) against 1600+ known compromised package names
+2. **pacman.log** — finds installs/upgrades during the attack window (June 9–12, 2026)
+3. **npm/bun cache** — searches for malicious packages (atomic-lockfile, js-digest, lockfile-js, nextfile-js)
+4. **systemd** — detects suspicious persistence services (Restart=always + RestartSec=30)
+
+Results are color-coded: red for threats, green for clean.
 
 ### Disk Usage / Использование диска
 

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { Sidebar } from '@/components/Sidebar'
+import { NewsPage } from '@/pages/NewsPage'
 import { DropZone } from '@/components/DropZone'
 import { PackagesPage } from '@/pages/PackagesPage'
 import { SystemUpdatePage } from '@/pages/SystemUpdatePage'
@@ -54,6 +55,7 @@ export default function App() {
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         <div className="h-full">
+          {currentPage === 'news' && <NewsPage />}
           {currentPage === 'drop' && <DropZone />}
           {currentPage === 'packages' && <PackagesPage />}
           {currentPage === 'update' && <SystemUpdatePage />}

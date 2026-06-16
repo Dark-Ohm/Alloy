@@ -158,3 +158,11 @@ pub fn list_tracked_installs() -> Vec<(String, String, String)> {
     result.sort_by(|a, b| a.0.cmp(&b.0));
     result
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageSecurityInfo {
+    pub package: String,
+    pub compromised: bool,
+    pub known_compromised_count: usize,
+}

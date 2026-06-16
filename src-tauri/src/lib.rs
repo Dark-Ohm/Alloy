@@ -1,5 +1,6 @@
 mod commands;
 mod fish;
+mod malware_check;
 mod models;
 mod services;
 
@@ -79,6 +80,8 @@ pub fn run() {
             commands::minimize_to_tray,
             commands::check_for_updates,
             commands::resolve_icon,
+            commands::security_scan_installed,
+            commands::security_scan_log,
         ])
         .setup(|app| {
             // Create tray menu

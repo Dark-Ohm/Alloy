@@ -358,99 +358,24 @@ pub async fn yay_search(q: &str) -> (String, String, i32) { let e = sq(q); fish:
 
 pub async fn fetch_pkgbuild(pkg: &str) -> anyhow::Result<PkgbuildReview> {
     let e = sq(pkg);
-    // Step 1: Run yay -G and check exit code separately
-    let (yay_out, yay_err, yay_code) = fish::exec_one(&format!("tmp=$(mktemp -d) && cd $tmp && yay -G {e} 2>&1 && echo 'YAY_OK' || echo 'YAY_FAILED'")).await?;
-    if yay_code != 0 || yay_out.contains("YAY_FAILED") || yay_out.trim().is_empty() {
-        anyhow::bail!("Failed to fetch PKGBUILD: {}", if yay_err.is_empty() { &yay_out } else { &yay_err });
+    let script = format!(
+        "set tmpd (mktemp -d); cd $tmpd; yay -G {e} 2>&1; set ycode $status; \
+         if test $ycode -eq 0; and test -f $tmpd/{e}/PKGBUILD; \
+           cat $tmpd/{e}/PKGBUILD; \
+         else; \
+           echo ''; \
+         end; \
+         rm -rf $tmpd"
+    );
+    let (out, err, code) = fish::exec_one(&script).await?;
+    if code != 0 {
+        anyhow::bail!("Failed to fetch PKGBUILD: {}", if err.is_empty() { &out } else { &err });
     }
-    // Step 2: Only read PKGBUILD if yay -G succeeded
-    let (_build_out, _, _build_code) = fish::exec_one(&format!("cat $(mktemp -d 2>/dev/null; echo '')/{e}/PKGBUILD 2>/dev/null || echo ''")).await?;
-    // Try the actual tmpdir from yay
-    let (build_out, _, _) = fish::exec_one(&format!("tmpdir=$(ls -dt /tmp/*/ 2>/dev/null | head -1); if [ -f \"${{tmpdir}}{e}/PKGBUILD\" ]; then cat \"${{tmpdir}}{e}/PKGBUILD\"; else echo ''; fi")).await?;
-    if build_out.trim().is_empty() {
-        // Fallback: re-run yay -G and cat in sequence, but only if first step passed
-        let (build_out, _, _) = fish::exec_one(&format!("tmp=$(mktemp -d); cd $tmp; yay -G {e} >/dev/null 2>&1 && cat $tmp/{e}/PKGBUILD 2>/dev/null || echo ''")).await?;
-        if build_out.trim().is_empty() {
-            anyhow::bail!("PKGBUILD is empty after successful yay -G");
-        }
-        Ok(PkgbuildReview { package_name: pkg.to_string(), content: build_out })
-    } else {
-        Ok(PkgbuildReview { package_name: pkg.to_string(), content: build_out })
+    let content = out.trim().to_string();
+    if content.is_empty() {
+        anyhow::bail!("PKGBUILD is empty or package not found in AUR");
     }
-}
-
-/// Search system icon themes for an icon matching `name`.
-/// Returns a base64 data URI string, or None if not found.
-pub fn resolve_icon_uri(name: &str) -> Option<String> {
-    let name_lower = name.to_lowercase();
-    let home = std::env::var("HOME").unwrap_or_default();
-    let search_dirs = [
-        format!("{home}/.local/share/icons"),
-        "/usr/share/icons".into(),
-        "/usr/local/share/icons".into(),
-    ];
-    let themes = ["hicolor", "Papirus", "Papirus-Dark", "breeze", "breeze-dark", "Adwaita", "gnome", "elementary"];
-    let size_dirs = ["scalable", "128x128", "96x96", "64x64", "48x48", "256x256", "32x32", "22x22", "16x16"];
-    let exts = ["svg", "png", "xpm"];
-
-    for base in &search_dirs {
-        for theme in &themes {
-            for size in &size_dirs {
-                for ext in &exts {
-                    let p = std::path::PathBuf::from(base)
-                        .join(theme).join(size).join("apps")
-                        .join(format!("{name_lower}.{ext}"));
-                    if p.is_file() {
-                        if let Ok(bytes) = std::fs::read(&p) {
-                            if bytes.len() > 256 * 1024 { continue; }
-                            let mime = match *ext {
-                                "svg" => "image/svg+xml",
-                                "png" => "image/png",
-                                "xpm" => "image/x-xpixmap",
-                                _ => continue,
-                            };
-                            return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Also try /usr/share/pixmaps (flat, no theme/size subdirs)
-    for ext in &exts {
-        let p = std::path::PathBuf::from("/usr/share/pixmaps")
-            .join(format!("{name_lower}.{ext}"));
-        if p.is_file() {
-            if let Ok(bytes) = std::fs::read(&p) {
-                if bytes.len() > 256 * 1024 { continue; }
-                let mime = match *ext {
-                    "svg" => "image/svg+xml",
-                    "png" => "image/png",
-                    "xpm" => "image/x-xpixmap",
-                    _ => continue,
-                };
-                return Some(format!("data:{mime};base64,{}", base64_encode(&bytes)));
-            }
-        }
-    }
-    None
-}
-
-/// Minimal base64 encoder (standard alphabet, no external crate needed).
-fn base64_encode(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(T[((n >> 18) & 63) as usize] as char);
-        out.push(T[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
-    }
-    out
+    Ok(PkgbuildReview { package_name: pkg.to_string(), content })
 }
 
 pub fn paccache_clean_script(k: i32) -> String { format!("paccache -r -k {k}") }
@@ -882,7 +807,7 @@ fn categorize(categories: &str) -> String {
 
 /// Resolve a desktop-entry `Icon=` value (absolute path or theme icon name) to a
 /// base64 `data:` URI. Returns `None` if no suitable file is found.
-fn resolve_icon_data_uri(icon: &str) -> Option<String> {
+pub fn resolve_icon_data_uri(icon: &str) -> Option<String> {
     let icon = icon.trim();
     if icon.is_empty() {
         return None;

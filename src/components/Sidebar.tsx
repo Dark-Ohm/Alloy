@@ -1,17 +1,18 @@
 import { useStore } from '@/store'
 import {
   Package, ArrowDownToLine, RefreshCw, Wrench, FileText, Settings,
-  CheckCircle2, XCircle, Rocket
+  CheckCircle2, XCircle, Rocket, Newspaper
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const NAV = [
+  { id: 'news' as const, label: "What's New", icon: Newspaper },
   { id: 'drop' as const, label: 'Drop Zone', icon: ArrowDownToLine },
   { id: 'packages' as const, label: 'Packages', icon: Package },
   { id: 'update' as const, label: 'System Update', icon: RefreshCw },
   { id: 'apps' as const, label: 'Applications', icon: Rocket },
   { id: 'maintenance' as const, label: 'Maintenance', icon: Wrench },
-  { id: 'config' as const, label: 'Config Conflicts', icon: FileText },
+  { id: 'config' as const, label: 'PKGBUILD Review', icon: FileText },
   { id: 'settings' as const, label: 'Settings', icon: Settings },
 ]
 

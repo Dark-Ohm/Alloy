@@ -110,3 +110,28 @@ export interface PackageProgress {
   pct: number
   status: 'done' | 'active' | 'pending'
 }
+
+export interface SecurityScanResult {
+  infectedPackages: InfectedPackage[]
+  logHits: LogHit[]
+  npmCacheHits: string[]
+  systemdSuspicious: string[]
+  totalCompromised: number
+}
+
+export interface InfectedPackage {
+  name: string
+  installDate: string
+}
+
+export interface LogHit {
+  package: string
+  action: string
+  date: string
+}
+
+export interface PackageSecurityInfo {
+  package: string
+  compromised: boolean
+  knownCompromisedCount: number
+}

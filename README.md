@@ -1,39 +1,42 @@
-# 📚 Alloy Documentation
+# Alloy — Arch Package Dropper
 
-**Архив пакетов для Arch Linux — полная документация**
+A modern GUI package manager for Arch Linux. Install .deb, .rpm, .pkg.tar.zst, and AppImage files with drag-and-drop. Manage AUR packages, system updates, and maintenance from one app.
 
-Welcome to the Alloy documentation. This guide will help you understand, use, and contribute to Alloy.
+## Features
 
-## Table of Contents
+- **Drop Zone** — Drag and drop .deb, .rpm, .pkg.tar.zst, or .AppImage files for one-click install
+- **Packages** — Search, install, and remove packages from official repos and AUR
+- **System Update** — Full system upgrade with safety preview, downgrade warnings, and kernel detection
+- **Applications** — Steam library-style launcher for all installed desktop apps
+- **Maintenance** — Cache cleanup, orphan removal, config conflicts, PGP keyring, and AUR malware security scan
+- **PKGBUILD Review** — User-friendly AUR package review with security checks
 
-### For Users
+## Documentation
+
 | Document | Description |
 |----------|-------------|
-| [Getting Started](getting-started.md) | Installation, first run, system requirements |
-| [Features Guide](features.md) | Detailed walkthrough of every feature |
-| [Troubleshooting](troubleshooting.md) | Common issues and how to fix them |
+| [Getting Started](docs/getting-started.md) | Installation, first run, system requirements |
+| [Features Guide](docs/features.md) | Detailed walkthrough of every feature |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and how to fix them |
+| [Architecture](docs/architecture.md) | Project structure, data flow, design decisions |
+| [Build Guide](docs/building.md) | Build from source, development mode, packaging |
+| [Commands API](docs/commands-api.md) | Complete reference of all Tauri commands |
+| [Streaming System](docs/streaming.md) | How real-time command output works |
+| [Contributing](docs/contributing.md) | Code style, PR guidelines, development workflow |
 
-### For Developers
-| Document | Description |
-|----------|-------------|
-| [Architecture](architecture.md) | Project structure, data flow, design decisions |
-| [Build Guide](building.md) | Build from source, development mode, packaging |
-| [Commands API](commands-api.md) | Complete reference of all 35+ Tauri commands |
-| [Streaming System](streaming.md) | How real-time command output works |
-| [Contributing](contributing.md) | Code style, PR guidelines, development workflow |
+## Quick Start
 
----
+```bash
+# Install dependencies
+npm install
 
-## Quick Navigation
+# Development mode
+npm run tauri:dev
 
-**I want to install Alloy** → [Getting Started](getting-started.md)
+# Build for production
+npm run tauri:build
+```
 
-**I want to use Alloy** → [Features Guide](features.md)
+## License
 
-**Something is broken** → [Troubleshooting](troubleshooting.md)
-
-**I want to build from source** → [Build Guide](building.md)
-
-**I want to contribute** → [Contributing](contributing.md)
-
-**I need the API reference** → [Commands API](commands-api.md)
+MIT

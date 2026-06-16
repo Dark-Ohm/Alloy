@@ -542,5 +542,60 @@ pub async fn check_for_updates(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn resolve_icon(name: String) -> Result<Option<String>, String> {
-    Ok(services::resolve_icon_uri(&name))
+    Ok(services::resolve_icon_data_uri(&name))
+}
+
+//  AUR Malware Check
+
+#[tauri::command]
+pub async fn security_scan_installed() -> Result<Vec<String>, String> {
+    let compromised: Vec<&str> = include_str!("../assets/compromised_packages.txt")
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    let compromised_set: std::collections::HashSet<&str> = compromised.iter().copied().collect();
+
+    let (out, _, _) = crate::fish::exec_one("pacman -Qmq 2>/dev/null").await.map_err(|e| e.to_string())?;
+    let infected: Vec<String> = out.lines()
+        .filter(|l| !l.is_empty())
+        .filter(|pkg| compromised_set.contains(*pkg))
+        .map(String::from)
+        .collect();
+    Ok(infected)
+}
+
+#[tauri::command]
+pub async fn security_scan_log() -> Result<Vec<String>, String> {
+    let compromised: Vec<&str> = include_str!("../assets/compromised_packages.txt")
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    let compromised_set: std::collections::HashSet<&str> = compromised.iter().copied().collect();
+
+    let (out, _, _) = crate::fish::exec_one("sh -c 'timeout 10 grep -E \"^\\[2026-06-(09|10|11|12)\\].*\\[ALPM\\] (installed|upgraded|reinstalled)\" /var/log/pacman.log 2>/dev/null'").await.map_err(|e| e.to_string())?;
+    let hits: Vec<String> = out.lines()
+        .filter(|l| {
+            if let Some(pos) = l.find("[ALPM] ") {
+                let after = &l[pos + 7..];
+                let parts: Vec<&str> = after.splitn(3, ' ').collect();
+                if parts.len() >= 2 {
+                    return compromised_set.contains(parts[1]);
+                }
+            }
+            false
+        })
+        .map(String::from)
+        .collect();
+    Ok(hits)
+}
+
+#[tauri::command]
+pub async fn check_package_security(package: String) -> Result<PackageSecurityInfo, String> {
+    let compromised = crate::malware_check::is_compromised(&package);
+    let total = crate::malware_check::compromised_count();
+    Ok(PackageSecurityInfo {
+        package,
+        compromised,
+        known_compromised_count: total,
+    })
 }

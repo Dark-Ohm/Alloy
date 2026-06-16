@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { SystemDeps, SearchResult } from '@/types'
 
 interface AppState {
-  currentPage: 'drop' | 'packages' | 'update' | 'apps' | 'maintenance' | 'config' | 'settings'
+  currentPage: 'news' | 'drop' | 'packages' | 'update' | 'apps' | 'maintenance' | 'config' | 'settings'
   setPage: (p: AppState['currentPage']) => void
 
   deps: SystemDeps | null

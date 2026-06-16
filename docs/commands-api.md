@@ -2,15 +2,17 @@
 
 All commands are invoked from the frontend via Tauri's `invoke()` function.
 
+**Tauri 2 naming:** Rust `snake_case` parameters become `camelCase` in JavaScript.
+Example: Rust `cmd_id` → JS `cmdId`.
+
+All commands are invoked from the frontend via Tauri's `invoke()` function.
+
 **Syntax:**
 ```typescript
 import { invoke } from '@tauri-apps/api/core'
 
 const result = await invoke<ReturnType>('command_name', { param: value })
 ```
-
-**Tauri 2 naming:** Rust `snake_case` parameters become `camelCase` in JavaScript.
-Example: Rust `cmd_id` → JS `cmdId`.
 
 ---
 
@@ -341,6 +343,24 @@ Get pacman cache disk usage.
 ```typescript
 const usage = await invoke<string>('disk_usage')
 // usage → '1.2G'
+```
+
+### `security_scan_installed`
+
+Check installed foreign packages against 1600+ known compromised AUR packages (June 2026 supply-chain attack). Returns only packages that are both installed AND in the compromised list.
+
+```typescript
+const infected = await invoke<string[]>('security_scan_installed')
+// infected → ['alvr', 'keepassx2', ...] (empty if clean)
+```
+
+### `security_scan_log`
+
+Scan pacman.log for installs/upgrades of compromised packages during the attack window (June 9–12, 2026). Returns matching log lines.
+
+```typescript
+const logHits = await invoke<string[]>('security_scan_log')
+// logHits → ['[2026-06-10T14:30:00+0300] [ALPM] installed alvr 2.0.0', ...]
 ```
 
 ---

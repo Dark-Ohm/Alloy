@@ -101,11 +101,10 @@ export function PackagesPage() {
       if (p.kind === 'stdout') store.appendLog(p.line!)
       else if (p.kind === 'stderr') store.appendLog(`⚠ ${p.line!}`)
       else if (p.kind === 'error') store.setErrorBanner(p.message!)
-      else if (p.kind === 'exit') { store.setProgress(100); setOpRunning(false) }
+      else if (p.kind === 'exit') { store.setProgress(100); setOpRunning(false); unlisten() }
     })
     try { await invoke(cmd, { cmdId: cmdId, ...args }) } catch (e) { store.setErrorBanner(`${e}`); setOpRunning(false) }
-    unlisten()
-  }, [])
+  }, [store])
 
   const showTree = useCallback(async (mode: TreeMode, pkg: string) => {
     if (!pkg.trim()) return

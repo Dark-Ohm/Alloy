@@ -81,12 +81,13 @@ export function SectionTitle({ children, icon }: { children: React.ReactNode; ic
   )
 }
 
-export function ActionButton({ children, variant = 'primary', onClick, disabled, className }: {
+export function ActionButton({ children, variant = 'primary', onClick, disabled, className, title }: {
   children: React.ReactNode
   variant?: 'primary' | 'success' | 'danger' | 'warning' | 'ghost'
   onClick?: () => void
   disabled?: boolean
   className?: string
+  title?: string
 }) {
   const base = 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer select-none border border-transparent disabled:opacity-50 disabled:cursor-not-allowed'
   const variants: Record<string, string> = {
@@ -96,7 +97,7 @@ export function ActionButton({ children, variant = 'primary', onClick, disabled,
     warning: 'bg-accent-yellow text-dark-900 hover:brightness-110 font-semibold',
     ghost: 'bg-dark-500 border-dark-400 hover:bg-dark-400 text-text-primary',
   }
-  return <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className ?? ''}`}>{children}</button>
+  return <button onClick={onClick} disabled={disabled} title={title} className={`${base} ${variants[variant]} ${className ?? ''}`}>{children}</button>
 }
 
 export function Card({ children, className }: { children: React.ReactNode; className?: string }) {

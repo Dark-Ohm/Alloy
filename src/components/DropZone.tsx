@@ -31,7 +31,7 @@ export function DropZone() {
       setForeignPkgs(result.map(([name, version, kind]) => ({ name, version, kind })))
     } catch { /* noop */ }
     setForeignLoading(false)
-  }, [])
+  }, [store])
 
   useEffect(() => { loadForeignPkgs() }, [loadForeignPkgs])
 
@@ -85,7 +85,7 @@ export function DropZone() {
         setDragOver(false)
       }
     })
-    return () => { unlisten.then((fn: () => void) => fn()) }
+    return () => { unlisten.then(fn => fn()) }
   }, [handleFile, store])
 
   const handleBrowse = useCallback(async () => {
