@@ -6,7 +6,12 @@ fn main() {
     let icons_dir = Path::new("icons");
     fs::create_dir_all(icons_dir).ok();
 
-    for (size, name) in &[(512, "icon.png"), (256, "128x128@2x.png"), (128, "128x128.png"), (32, "32x32.png")] {
+    for (size, name) in &[
+        (512, "icon.png"),
+        (256, "128x128@2x.png"),
+        (128, "128x128.png"),
+        (32, "32x32.png"),
+    ] {
         let path = icons_dir.join(name);
         if !path.exists() {
             if let Some(data) = generate_png(*size, *size) {
@@ -42,7 +47,7 @@ fn generate_png(width: u32, height: u32) -> Option<Vec<u8>> {
     let raw_size = (1 + width * 4) as usize * height as usize;
     let mut raw = Vec::with_capacity(raw_size);
     for _ in 0..height {
-        raw.push(0u8); // filter: none
+        raw.extend(std::iter::repeat_n(0u8, 1));
         for _ in 0..width {
             raw.push(122); // R
             raw.push(162); // G

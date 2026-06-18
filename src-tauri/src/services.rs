@@ -1,17 +1,17 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 use crate::fish;
 use crate::models::{
-    self, load_config, save_config, PkgbuildReview, PackageAnalysis, StreamEvent, InformantResult,
-    AppImageEntry, AppEntry,
+    self, load_config, save_config, AppEntry, AppImageEntry, InformantResult, PackageAnalysis,
+    PkgbuildReview, StreamEvent,
 };
 
 pub async fn check_dep(name: &str) -> models::DepStatus {
     match fish::exec_one(&format!("which {name}")).await {
-        Ok((out, _, code)) if code == 0 => models::DepStatus {
+        Ok((out, _, 0)) => models::DepStatus {
             installed: true,
             path: Some(out.trim().to_string()),
         },
@@ -21,7 +21,11 @@ pub async fn check_dep(name: &str) -> models::DepStatus {
 
 pub async fn analyze_package(path: &str) -> anyhow::Result<PackageAnalysis> {
     let p = PathBuf::from(path);
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     let fname = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
     let is_appimage = fname.ends_with(".AppImage") || fname.ends_with(".appimage");
     // Pre-built Arch packages (.pkg.tar, .pkg.tar.zst) — install directly with pacman -U
@@ -37,7 +41,9 @@ pub async fn analyze_package(path: &str) -> anyhow::Result<PackageAnalysis> {
     }
 }
 
-fn sq(s: &str) -> String { shlex::try_quote(s).unwrap().into_owned() }
+fn sq(s: &str) -> String {
+    shlex::try_quote(s).unwrap().into_owned()
+}
 
 async fn analyze_deb(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
     let path_str = path.to_string_lossy().to_string();
@@ -77,10 +83,21 @@ END { print v; print e; print a; print d; print s; print p }\n";
             lines.get(5).unwrap_or(&"").trim().to_string(),
         )
     } else {
-        ("unknown".into(), "0.0".into(), "x86_64".into(), String::new(), "0".into(), String::new())
+        (
+            "unknown".into(),
+            "0.0".into(),
+            "x86_64".into(),
+            String::new(),
+            "0".into(),
+            String::new(),
+        )
     };
 
-    let deps: Vec<String> = deps_str.split(',').map(|d| d.trim().split_whitespace().next().unwrap_or("").to_string()).filter(|d| !d.is_empty()).collect();
+    let deps: Vec<String> = deps_str
+        .split(',')
+        .map(|d| d.split_whitespace().next().unwrap_or("").to_string())
+        .filter(|d| !d.is_empty())
+        .collect();
     // Installed-Size from control (in KB), fall back to actual .deb file size
     let size_bytes = if size_str != "0" && !size_str.is_empty() {
         size_str.parse::<u64>().unwrap_or(0) * 1024
@@ -93,9 +110,24 @@ END { print v; print e; print a; print d; print s; print p }\n";
         "cd {tmp} && tar xf data.tar.* 2>/dev/null && find {tmp} -name '*.desktop' -path '*/applications/*' 2>/dev/null | head -1"
     );
     let (desk_out, _, _) = fish::exec_one(&desktop_script).await?;
-    let desktop_file = if !desk_out.trim().is_empty() { Some(desk_out.trim().to_string()) } else { None };
+    let desktop_file = if !desk_out.trim().is_empty() {
+        Some(desk_out.trim().to_string())
+    } else {
+        None
+    };
 
-    Ok(PackageAnalysis { format: "deb".into(), file_path: path_str, package_name: name, version: ver, description: desc, dependencies: deps, arch, size_bytes, extracted_path: Some(tmp), desktop_file })
+    Ok(PackageAnalysis {
+        format: "deb".into(),
+        file_path: path_str,
+        package_name: name,
+        version: ver,
+        description: desc,
+        dependencies: deps,
+        arch,
+        size_bytes,
+        extracted_path: Some(tmp),
+        desktop_file,
+    })
 }
 
 async fn analyze_rpm(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
@@ -103,16 +135,46 @@ async fn analyze_rpm(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
     let p = sq(&path_string);
     let (info, _, code) = fish::exec_one(&format!("rpm -qip {p} 2>/dev/null")).await?;
     let size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    let mut name = "unknown".to_string(); let mut ver = "0.0".to_string(); let mut arch = "x86_64".to_string(); let mut desc = String::new();
-    if code == 0 { for line in info.lines() { let l = line.trim(); if l.starts_with("Name") { name = l.split(':').nth(1).unwrap_or("unknown").trim().to_string(); } else if l.starts_with("Version") { ver = l.split(':').nth(1).unwrap_or("0.0").trim().to_string(); } else if l.starts_with("Architecture") { arch = l.split(':').nth(1).unwrap_or("x86_64").trim().to_string(); } else if l.starts_with("Summary") { desc = l.split(':').nth(1).unwrap_or("").trim().to_string(); } } }
-    Ok(PackageAnalysis { format: "rpm".into(), file_path: path_string, package_name: name, version: ver, description: desc, dependencies: vec![], arch, size_bytes, extracted_path: None, desktop_file: None })
+    let mut name = "unknown".to_string();
+    let mut ver = "0.0".to_string();
+    let mut arch = "x86_64".to_string();
+    let mut desc = String::new();
+    if code == 0 {
+        for line in info.lines() {
+            let l = line.trim();
+            if l.starts_with("Name") {
+                name = l.split(':').nth(1).unwrap_or("unknown").trim().to_string();
+            } else if l.starts_with("Version") {
+                ver = l.split(':').nth(1).unwrap_or("0.0").trim().to_string();
+            } else if l.starts_with("Architecture") {
+                arch = l.split(':').nth(1).unwrap_or("x86_64").trim().to_string();
+            } else if l.starts_with("Summary") {
+                desc = l.split(':').nth(1).unwrap_or("").trim().to_string();
+            }
+        }
+    }
+    Ok(PackageAnalysis {
+        format: "rpm".into(),
+        file_path: path_string,
+        package_name: name,
+        version: ver,
+        description: desc,
+        dependencies: vec![],
+        arch,
+        size_bytes,
+        extracted_path: None,
+        desktop_file: None,
+    })
 }
 
 async fn analyze_pkg_tar(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
     let path_str = path.to_string_lossy().to_string();
     let size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     // Parse name and version from filename: spotify-launcher-0.6.6-1-x86_64.pkg.tar
-    let fname = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+    let fname = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
     // Remove trailing .pkg from the stem if present
     let stem = fname.strip_suffix(".pkg").unwrap_or(fname);
     // Extract version: everything after the last two hyphens (arch-rel)
@@ -141,24 +203,61 @@ async fn analyze_tar_archive(path: &PathBuf) -> anyhow::Result<PackageAnalysis> 
     let p = sq(&path_string);
     let tmp = tmp_dir();
     // List contents AND extract the archive so build_arch_pkg can find files
-    let (listing, _, _) = fish::exec_one(&format!("mkdir -p {tmp} && tar -xf {p} -C {tmp} 2>/dev/null; tar -tf {p} 2>/dev/null | head -50")).await?;
-    let mut has_pkgbuild = false; let mut desktop_file = None;
-    for line in listing.lines() { let l = line.trim(); if l.ends_with("PKGBUILD") { has_pkgbuild = true; } if l.contains("/applications/") && l.ends_with(".desktop") { desktop_file = Some(l.to_string()); } }
-    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
+    let (listing, _, _) = fish::exec_one(&format!(
+        "mkdir -p {tmp} && tar -xf {p} -C {tmp} 2>/dev/null; tar -tf {p} 2>/dev/null | head -50"
+    ))
+    .await?;
+    let mut has_pkgbuild = false;
+    let mut desktop_file = None;
+    for line in listing.lines() {
+        let l = line.trim();
+        if l.ends_with("PKGBUILD") {
+            has_pkgbuild = true;
+        } else if l.contains("/applications/") && l.ends_with(".desktop") {
+            desktop_file = Some(l.to_string());
+        }
+    }
+    let name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
     let size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    Ok(PackageAnalysis { format: "tar".into(), file_path: path_string, package_name: name, version: "0.0".into(), description: format!("Tar archive (PKGBUILD: {has_pkgbuild})"), dependencies: vec![], arch: "any".into(), size_bytes, extracted_path: Some(tmp), desktop_file })
+    Ok(PackageAnalysis {
+        format: "tar".into(),
+        file_path: path_string,
+        package_name: name,
+        version: "0.0".into(),
+        description: format!("Tar archive (PKGBUILD: {has_pkgbuild})"),
+        dependencies: vec![],
+        arch: "any".into(),
+        size_bytes,
+        extracted_path: Some(tmp),
+        desktop_file,
+    })
 }
 
-pub async fn build_arch_pkg(pkg: &PackageAnalysis, tx: &mpsc::Sender<StreamEvent>) -> anyhow::Result<PathBuf> {
+pub async fn build_arch_pkg(
+    pkg: &PackageAnalysis,
+    tx: &mpsc::Sender<StreamEvent>,
+) -> anyhow::Result<PathBuf> {
     let out_dir_str = format!("/tmp/alloy-build-{}", now_nanos());
     let _ = std::fs::create_dir_all(&out_dir_str);
     if pkg.format == "tar" {
         let extracted = pkg.extracted_path.as_deref().unwrap_or("/tmp");
-        let script = format!("cd {extracted} && PKGDIR={out_dir_str} makepkg --nodeps --noconfirm 2>&1");
-        let _ = tx.send(StreamEvent::Stdout { line: format!("Building with makepkg in {extracted}") }).await;
+        let script =
+            format!("cd {extracted} && PKGDIR={out_dir_str} makepkg --nodeps --noconfirm 2>&1");
+        let _ = tx
+            .send(StreamEvent::Stdout {
+                line: format!("Building with makepkg in {extracted}"),
+            })
+            .await;
         let (stdout, stderr, code) = fish::exec_one(&script).await?;
         let _ = tx.send(StreamEvent::Stdout { line: stdout }).await;
-        if code != 0 { let _ = tx.send(StreamEvent::Stderr { line: stderr }).await; anyhow::bail!("makepkg failed with code {code}"); }
+        if code != 0 {
+            let _ = tx.send(StreamEvent::Stderr { line: stderr }).await;
+            anyhow::bail!("makepkg failed with code {code}");
+        }
     } else if pkg.format == "rpm" {
         let rpm_path = &pkg.file_path;
         let pkgver_sanitized = pkg.version.replace('-', "_");
@@ -173,10 +272,17 @@ pub async fn build_arch_pkg(pkg: &PackageAnalysis, tx: &mpsc::Sender<StreamEvent
             pkgver_sanitized = pkgver_sanitized,
             desc = pkg.description.replace('\n', " ").replace('"', "\\\""),
         );
-        let _ = tx.send(StreamEvent::Stdout { line: "Building package from .rpm...".into() }).await;
+        let _ = tx
+            .send(StreamEvent::Stdout {
+                line: "Building package from .rpm...".into(),
+            })
+            .await;
         let (stdout, stderr, code) = fish::exec_one(&script).await?;
         let _ = tx.send(StreamEvent::Stdout { line: stdout }).await;
-        if code != 0 { let _ = tx.send(StreamEvent::Stderr { line: stderr }).await; anyhow::bail!("makepkg failed with code {code}"); }
+        if code != 0 {
+            let _ = tx.send(StreamEvent::Stderr { line: stderr }).await;
+            anyhow::bail!("makepkg failed with code {code}");
+        }
     } else {
         let deb_path = &pkg.file_path;
         // Skip debtap entirely — create our own PKGBUILD with sanitized version,
@@ -204,19 +310,42 @@ pub async fn build_arch_pkg(pkg: &PackageAnalysis, tx: &mpsc::Sender<StreamEvent
             pkgver_sanitized = pkgver_sanitized,
             desc = pkg.description.replace('\n', " ").replace('"', "\\\""),
         );
-        let _ = tx.send(StreamEvent::Stdout { line: "Building package from .deb...".into() }).await;
+        let _ = tx
+            .send(StreamEvent::Stdout {
+                line: "Building package from .deb...".into(),
+            })
+            .await;
         let (stdout, stderr, code) = fish::exec_one(&script).await?;
         let _ = tx.send(StreamEvent::Stdout { line: stdout }).await;
-        if code != 0 { let _ = tx.send(StreamEvent::Stderr { line: stderr }).await; anyhow::bail!("makepkg failed with code {code}"); }
+        if code != 0 {
+            let _ = tx.send(StreamEvent::Stderr { line: stderr }).await;
+            anyhow::bail!("makepkg failed with code {code}");
+        }
     }
-    for entry in std::fs::read_dir(&out_dir_str)? { let entry = entry?; if entry.file_name().to_string_lossy().ends_with(".pkg.tar.zst") { return Ok(entry.path()); } }
+    for entry in std::fs::read_dir(&out_dir_str)? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".pkg.tar.zst")
+        {
+            return Ok(entry.path());
+        }
+    }
     anyhow::bail!("No .pkg.tar.zst produced")
 }
 
-pub async fn install_pkg_file(pkg_path: &PathBuf, tx: &mpsc::Sender<StreamEvent>) -> anyhow::Result<()> {
+pub async fn install_pkg_file(
+    pkg_path: &Path,
+    tx: &mpsc::Sender<StreamEvent>,
+) -> anyhow::Result<()> {
     let path_string = pkg_path.to_string_lossy().to_string();
     let p = sq(&path_string);
-    let _ = tx.send(StreamEvent::Stdout { line: format!("pkexec pacman -U --noconfirm {p}") }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: format!("pkexec pacman -U --noconfirm {p}"),
+        })
+        .await;
     // Pipe input to auto-answer provider selection (pick 1st) and dependency conflicts (skip)
     let script = format!("echo -e '1\\ny' | pkexec pacman -U --noconfirm {p}");
     fish::exec_streaming(&script, false, tx.clone()).await?;
@@ -225,22 +354,71 @@ pub async fn install_pkg_file(pkg_path: &PathBuf, tx: &mpsc::Sender<StreamEvent>
 
 pub async fn find_desktop_file(pkg_name: &str) -> Option<String> {
     let e = sq(pkg_name);
-    let (out, _, code) = fish::exec_one(&format!("find /usr/share/applications -name '*{e}*.desktop' -type f 2>/dev/null | head -1")).await.ok()?;
-    let t = out.trim().to_string(); if code == 0 && !t.is_empty() { Some(t) } else { None }
+    let (out, _, code) = fish::exec_one(&format!(
+        "find /usr/share/applications -name '*{e}*.desktop' -type f 2>/dev/null | head -1"
+    ))
+    .await
+    .ok()?;
+    let t = out.trim().to_string();
+    if code == 0 && !t.is_empty() {
+        Some(t)
+    } else {
+        None
+    }
 }
 
-pub async fn pacman_search(q: &str) -> (String, String, i32) { let e = sq(q); fish::exec_one(&format!("pacman -Ss {e}")).await.unwrap_or_default() }
-pub async fn pacman_info(n: &str) -> (String, String, i32) { let e = sq(n); fish::exec_one(&format!("pacman -Si {e}")).await.unwrap_or_default() }
-pub async fn pacman_list_installed() -> (String, String, i32) { fish::exec_one("pacman -Q").await.unwrap_or_default() }
+pub async fn pacman_search(q: &str) -> (String, String, i32) {
+    let e = sq(q);
+    fish::exec_one(&format!("pacman -Ss {e}"))
+        .await
+        .unwrap_or_default()
+}
+pub async fn pacman_info(n: &str) -> (String, String, i32) {
+    let e = sq(n);
+    fish::exec_one(&format!("pacman -Si {e}"))
+        .await
+        .unwrap_or_default()
+}
+pub async fn pacman_list_installed() -> (String, String, i32) {
+    fish::exec_one("pacman -Q").await.unwrap_or_default()
+}
 pub fn upgrade_script() -> String {
     "env LC_ALL=C pacman -Syu --noconfirm".into()
 }
 
-pub fn install_script(p: &[String]) -> String { format!("pacman -Syu --noconfirm --needed {}", p.iter().map(|s| sq(s.as_str())).collect::<Vec<_>>().join(" ")) }
-pub fn remove_script(p: &[String]) -> String { format!("pacman -Rns --noconfirm {}", p.iter().map(|s| sq(s.as_str())).collect::<Vec<_>>().join(" ")) }
-pub fn upgrade_stream_script() -> String { "env LC_ALL=C yay -Syu --noconfirm".into() }
-pub fn yay_install_script(p: &[String]) -> String { format!("yay -S --noconfirm --needed {}", p.iter().map(|s| sq(s.as_str())).collect::<Vec<_>>().join(" ")) }
-pub fn yay_clean_orphans_script() -> String { "yay -Yc --noconfirm".into() }
+pub fn install_script(p: &[String]) -> String {
+    format!(
+        "pacman -Syu --noconfirm --needed {}",
+        p.iter()
+            .map(|s| sq(s.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+pub fn remove_script(p: &[String]) -> String {
+    format!(
+        "pacman -Rns --noconfirm {}",
+        p.iter()
+            .map(|s| sq(s.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+pub fn upgrade_stream_script() -> String {
+    "env LC_ALL=C yay -Syu --noconfirm".into()
+}
+pub fn yay_install_script(p: &[String]) -> String {
+    format!(
+        "yay -S --noconfirm --needed {}",
+        p.iter()
+            .map(|s| sq(s.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+}
+pub fn yay_clean_orphans_script() -> String {
+    "yay -Yc --noconfirm".into()
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Safety: Upgrade Preview & Protection
@@ -264,55 +442,62 @@ pub async fn preview_yay_upgrade() -> anyhow::Result<String> {
 
 pub async fn check_for_downgrades() -> anyhow::Result<Vec<String>> {
     // This needs sudo to sync databases. Return empty if it fails.
-    let (out, _, code) = fish::exec_one(
-        "pacman -Syu --print 2>/dev/null | grep -i 'downgrading'"
-    ).await?;
+    let (out, _, code) =
+        fish::exec_one("pacman -Syu --print 2>/dev/null | grep -i 'downgrading'").await?;
     if code != 0 {
         return Ok(vec![]);
     }
-    Ok(out.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect())
+    Ok(out
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(String::from)
+        .collect())
 }
 
 pub async fn create_pre_upgrade_snapshot() -> anyhow::Result<String> {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
-    
+
     // Try snapper first
     let (_, _, which_code) = fish::exec_one("which snapper 2>/dev/null").await?;
     if which_code == 0 {
         let snap_name = format!("pre-upgrade-{}", timestamp);
         let (_, _, code) = fish::exec_one(&format!(
-            "pkexec snapper -c root create --description '{}' --cleanup-number 5 2>&1", snap_name
-        )).await?;
+            "pkexec snapper -c root create --description '{}' --cleanup-number 5 2>&1",
+            snap_name
+        ))
+        .await?;
         if code == 0 {
             return Ok(format!("Created snapper snapshot: {}", snap_name));
         }
     }
-    
+
     // Try btrfs snapshot
     let (fstype_out, _, _) = fish::exec_one("stat -f -c %T / 2>/dev/null").await?;
     if fstype_out.trim() == "btrfs" {
         let snap_dir = format!("/.snapshots/pre-upgrade-{}", timestamp);
         let (_, _, code) = fish::exec_one(&format!(
-            "pkexec btrfs subvolume snapshot / '{}' 2>&1", snap_dir
-        )).await?;
+            "pkexec btrfs subvolume snapshot / '{}' 2>&1",
+            snap_dir
+        ))
+        .await?;
         if code == 0 {
             return Ok(format!("Created btrfs snapshot: {}", snap_dir));
         }
     }
-    
+
     // Try timeshift
     let (_, _, which_code) = fish::exec_one("which timeshift 2>/dev/null").await?;
     if which_code == 0 {
-        let (_, _, code) = fish::exec_one(
-            "pkexec timeshift --create --comments 'Pre-upgrade snapshot' 2>&1"
-        ).await?;
+        let (_, _, code) =
+            fish::exec_one("pkexec timeshift --create --comments 'Pre-upgrade snapshot' 2>&1")
+                .await?;
         if code == 0 {
             return Ok("Created timeshift snapshot".to_string());
         }
     }
-    
+
     anyhow::bail!("No snapshot tool available (install snapper, timeshift, or use btrfs)")
 }
 
@@ -326,7 +511,8 @@ pub async fn check_kernel_packages() -> anyhow::Result<Vec<String>> {
     if code != 0 {
         return Ok(vec![]);
     }
-    Ok(out.lines()
+    Ok(out
+        .lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| {
             // Extract package name (first column)
@@ -342,7 +528,8 @@ pub async fn check_dkms_modules() -> anyhow::Result<Vec<String>> {
     if code != 0 || out.trim().is_empty() {
         return Ok(vec![]);
     }
-    Ok(out.lines()
+    Ok(out
+        .lines()
         .filter(|l| !l.trim().is_empty() && l.contains(':'))
         .map(|l| l.trim().to_string())
         .collect())
@@ -354,7 +541,12 @@ pub async fn get_current_kernel() -> anyhow::Result<String> {
     Ok(out.trim().to_string())
 }
 
-pub async fn yay_search(q: &str) -> (String, String, i32) { let e = sq(q); fish::exec_one(&format!("yay -Ss {e}")).await.unwrap_or_default() }
+pub async fn yay_search(q: &str) -> (String, String, i32) {
+    let e = sq(q);
+    fish::exec_one(&format!("yay -Ss {e}"))
+        .await
+        .unwrap_or_default()
+}
 
 pub async fn fetch_pkgbuild(pkg: &str) -> anyhow::Result<PkgbuildReview> {
     let e = sq(pkg);
@@ -369,33 +561,53 @@ pub async fn fetch_pkgbuild(pkg: &str) -> anyhow::Result<PkgbuildReview> {
     );
     let (out, err, code) = fish::exec_one(&script).await?;
     if code != 0 {
-        anyhow::bail!("Failed to fetch PKGBUILD: {}", if err.is_empty() { &out } else { &err });
+        anyhow::bail!(
+            "Failed to fetch PKGBUILD: {}",
+            if err.is_empty() { &out } else { &err }
+        );
     }
     let content = out.trim().to_string();
     if content.is_empty() {
         anyhow::bail!("PKGBUILD is empty or package not found in AUR");
     }
-    Ok(PkgbuildReview { package_name: pkg.to_string(), content })
+    Ok(PkgbuildReview {
+        package_name: pkg.to_string(),
+        content,
+    })
 }
 
-pub fn paccache_clean_script(k: i32) -> String { format!("paccache -r -k {k}") }
-pub fn paccache_clean_uninstalled_script() -> String { "paccache -ruk0".into() }
-pub fn get_config() -> HashMap<String, serde_json::Value> { load_config() }
+pub fn paccache_clean_script(k: i32) -> String {
+    format!("paccache -r -k {k}")
+}
+pub fn paccache_clean_uninstalled_script() -> String {
+    "paccache -ruk0".into()
+}
+pub fn get_config() -> HashMap<String, serde_json::Value> {
+    load_config()
+}
 pub fn set_config(s: &str, k: &str, v: serde_json::Value) {
     let mut c = load_config();
-    let e = c.entry(s.to_string()).or_insert_with(|| serde_json::json!({}));
-    if let Some(m) = e.as_object_mut() { m.insert(k.to_string(), v); }
+    let e = c
+        .entry(s.to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(m) = e.as_object_mut() {
+        m.insert(k.to_string(), v);
+    }
     save_config(&c);
 }
 
 pub async fn pactree_forward(pkg: &str) -> (String, String, i32) {
     let e = sq(pkg);
-    fish::exec_one(&format!("pactree {e} 2>/dev/null")).await.unwrap_or_default()
+    fish::exec_one(&format!("pactree {e} 2>/dev/null"))
+        .await
+        .unwrap_or_default()
 }
 
 pub async fn pactree_reverse(pkg: &str) -> (String, String, i32) {
     let e = sq(pkg);
-    fish::exec_one(&format!("pactree -r {e} 2>/dev/null")).await.unwrap_or_default()
+    fish::exec_one(&format!("pactree -r {e} 2>/dev/null"))
+        .await
+        .unwrap_or_default()
 }
 
 pub async fn check_informant_news() -> anyhow::Result<InformantResult> {
@@ -415,14 +627,19 @@ pub async fn check_informant_news() -> anyhow::Result<InformantResult> {
     if has_unread {
         for line in combined.lines() {
             let t = line.trim();
-            if t.is_empty() { continue; }
+            if t.is_empty() {
+                continue;
+            }
             if !t.starts_with("There are") && !t.starts_with("No ") && !t.starts_with("Error") {
                 entries.push(t.to_string());
             }
         }
     }
     let message = if has_unread {
-        format!("{} unread news entries. Read them before upgrading!", entries.len())
+        format!(
+            "{} unread news entries. Read them before upgrading!",
+            entries.len()
+        )
     } else {
         "No unread news. Safe to upgrade.".into()
     };
@@ -436,12 +653,21 @@ pub async fn check_informant_news() -> anyhow::Result<InformantResult> {
 
 pub async fn informant_read_all() -> anyhow::Result<()> {
     let (_, _, code) = fish::exec_one("informant read --all 2>&1").await?;
-    if code != 0 { anyhow::bail!("Failed to mark news as read"); }
+    if code != 0 {
+        anyhow::bail!("Failed to mark news as read");
+    }
     Ok(())
 }
 
-fn tmp_dir() -> String { format!("/tmp/alloy-{}", now_nanos()) }
-fn now_nanos() -> u128 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() }
+fn tmp_dir() -> String {
+    format!("/tmp/alloy-{}", now_nanos())
+}
+fn now_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  AppImage management
@@ -495,14 +721,21 @@ fn extract_appimage_icon(appimage_path: &PathBuf) -> Option<String> {
         }
     }
     let src = candidates.into_iter().find(|p| {
-        std::fs::metadata(p).map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+        std::fs::metadata(p)
+            .map(|m| m.is_file() && m.len() > 0)
+            .unwrap_or(false)
     })?;
 
-    let is_svg = src.extension()
+    let is_svg = src
+        .extension()
         .and_then(|x| x.to_str())
         .map(|e| e.eq_ignore_ascii_case("svg"))
         .unwrap_or(false);
-    let (size_dir, ext) = if is_svg { ("scalable", "svg") } else { ("256x256", "png") };
+    let (size_dir, ext) = if is_svg {
+        ("scalable", "svg")
+    } else {
+        ("256x256", "png")
+    };
 
     // Install under the user's hicolor theme — no root required, and it matches
     // the dirs scanned by resolve_icon_data_uri() / the Applications tab.
@@ -513,7 +746,11 @@ fn extract_appimage_icon(appimage_path: &PathBuf) -> Option<String> {
     let copied = std::fs::copy(&src, &dest).is_ok();
     let _ = std::fs::remove_dir_all(&work);
 
-    if copied { Some(icon_name) } else { None }
+    if copied {
+        Some(icon_name)
+    } else {
+        None
+    }
 }
 
 async fn analyze_appimage(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
@@ -525,14 +762,16 @@ async fn analyze_appimage(path: &PathBuf) -> anyhow::Result<PackageAnalysis> {
         anyhow::bail!("Not a valid AppImage file");
     }
 
-    let name = path.file_stem()
+    let name = path
+        .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
         .to_string();
 
     let size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-    let (version, _, _) = fish::exec_one(&format!("{p} --appimage-version 2>/dev/null || echo ''")).await
+    let (version, _, _) = fish::exec_one(&format!("{p} --appimage-version 2>/dev/null || echo ''"))
+        .await
         .unwrap_or_default();
 
     Ok(PackageAnalysis {
@@ -559,14 +798,18 @@ pub async fn install_appimage(
     let src = PathBuf::from(&pkg.file_path);
     let dest = dest_dir.join(format!("{}.AppImage", pkg.package_name));
 
-    let _ = tx.send(StreamEvent::Stdout {
-        line: format!("→ Copying to {}/", dest_dir.display()),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: format!("→ Copying to {}/", dest_dir.display()),
+        })
+        .await;
     std::fs::copy(&src, &dest)?;
 
-    let _ = tx.send(StreamEvent::Stdout {
-        line: "→ Setting executable permission...".into(),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: "→ Setting executable permission...".into(),
+        })
+        .await;
     use std::os::unix::fs::PermissionsExt;
     let mut perms = std::fs::metadata(&dest)?.permissions();
     perms.set_mode(0o755);
@@ -593,18 +836,22 @@ pub async fn install_appimage(
     );
     std::fs::write(&desktop_path, desktop_content)?;
 
-    let _ = tx.send(StreamEvent::Stdout {
-        line: format!("✓ Created desktop entry: {}", desktop_path.display()),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: format!("✓ Created desktop entry: {}", desktop_path.display()),
+        })
+        .await;
 
     if let Ok(()) = std::process::Command::new("update-desktop-database")
         .arg(d_dir.to_string_lossy().as_ref())
         .output()
         .map(|_| ())
     {
-        let _ = tx.send(StreamEvent::Stdout {
-            line: "✓ Updated desktop database".into(),
-        }).await;
+        let _ = tx
+            .send(StreamEvent::Stdout {
+                line: "✓ Updated desktop database".into(),
+            })
+            .await;
     }
 
     Ok(dest.to_string_lossy().to_string())
@@ -613,7 +860,9 @@ pub async fn install_appimage(
 pub async fn list_managed_appimages() -> anyhow::Result<Vec<AppImageEntry>> {
     let d_dir = desktop_dir();
     let mut entries = vec![];
-    if !d_dir.exists() { return Ok(entries); }
+    if !d_dir.exists() {
+        return Ok(entries);
+    }
 
     for entry in std::fs::read_dir(&d_dir)? {
         let entry = entry?;
@@ -624,7 +873,8 @@ pub async fn list_managed_appimages() -> anyhow::Result<Vec<AppImageEntry>> {
                 .strip_prefix("alloy-")
                 .and_then(|s| s.strip_suffix(".desktop"))
                 .unwrap_or("unknown");
-            let exec_line = content.lines()
+            let exec_line = content
+                .lines()
                 .find(|l| l.starts_with("Exec="))
                 .map(|l| l[5..].to_string())
                 .unwrap_or_default();
@@ -661,26 +911,29 @@ pub async fn remove_appimage(name: &str) -> anyhow::Result<()> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn debtap_needs_init() -> bool {
-    let (out, _, code) = fish::exec_one("debtap -u --help 2>/dev/null || debtap 2>&1 | head -5").await
+    let (out, _, code) = fish::exec_one("debtap -u --help 2>/dev/null || debtap 2>&1 | head -5")
+        .await
         .unwrap_or_default();
     code != 0 || out.contains("run as root") || out.contains("update")
 }
 
 pub async fn debtap_init(tx: &mpsc::Sender<StreamEvent>) -> anyhow::Result<()> {
-    let _ = tx.send(StreamEvent::Stdout {
-        line: "→ Initializing debtap (first-run setup)...".into(),
-    }).await;
-    let _ = tx.send(StreamEvent::Stdout {
-        line: "→ Running: debtap -u (this downloads package metadata)".into(),
-    }).await;
-    fish::exec_streaming(
-        "pkexec debtap -u",
-        false,
-        tx.clone(),
-    ).await?;
-    let _ = tx.send(StreamEvent::Stdout {
-        line: "✓ debtap initialized successfully".into(),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: "→ Initializing debtap (first-run setup)...".into(),
+        })
+        .await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: "→ Running: debtap -u (this downloads package metadata)".into(),
+        })
+        .await;
+    fish::exec_streaming("pkexec debtap -u", false, tx.clone()).await?;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: "✓ debtap initialized successfully".into(),
+        })
+        .await;
     Ok(())
 }
 
@@ -689,15 +942,19 @@ pub async fn debtap_init(tx: &mpsc::Sender<StreamEvent>) -> anyhow::Result<()> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub async fn cleanup_tmp_alloy(tx: &mpsc::Sender<StreamEvent>) -> anyhow::Result<()> {
-    let _ = tx.send(StreamEvent::Stdout {
-        line: "→ Cleaning temporary build artifacts...".into(),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: "→ Cleaning temporary build artifacts...".into(),
+        })
+        .await;
     let (out, _, _) = fish::exec_one(
         "find /tmp -maxdepth 1 -name 'alloy-*' -type d -mmin +60 -exec rm -rf {} + 2>/dev/null; echo 'done'"
     ).await.unwrap_or_default();
-    let _ = tx.send(StreamEvent::Stdout {
-        line: format!("✓ Cleanup complete: {}", out.trim()),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::Stdout {
+            line: format!("✓ Cleanup complete: {}", out.trim()),
+        })
+        .await;
     Ok(())
 }
 
@@ -741,26 +998,28 @@ fn scan_desktop_dir(dir: &std::path::Path, entries: &mut Vec<AppEntry>) -> anyho
             continue;
         }
         let content = std::fs::read_to_string(entry.path())?;
-        let name_line = content.lines()
+        let name_line = content
+            .lines()
             .find(|l| l.starts_with("Name="))
             .map(|l| l[5..].to_string())
             .unwrap_or_else(|| fname.replace(".desktop", ""));
-        let exec_line = content.lines()
+        let exec_line = content
+            .lines()
             .find(|l| l.starts_with("Exec="))
             .map(|l| l[5..].to_string())
             .unwrap_or_default();
-        let icon_line = content.lines()
+        let icon_line = content
+            .lines()
             .find(|l| l.starts_with("Icon="))
             .map(|l| l[5..].to_string())
             .unwrap_or_else(|| "application-x-executable".to_string());
-        let categories_line = content.lines()
+        let categories_line = content
+            .lines()
             .find(|l| l.starts_with("Categories="))
             .map(|l| l[11..].to_string())
             .unwrap_or_default();
-        let no_display = content.lines()
-            .any(|l| l.starts_with("NoDisplay=true"));
-        let hidden = content.lines()
-            .any(|l| l.starts_with("Hidden=true"));
+        let no_display = content.lines().any(|l| l.starts_with("NoDisplay=true"));
+        let hidden = content.lines().any(|l| l.starts_with("Hidden=true"));
         if no_display || hidden {
             continue;
         }
@@ -783,21 +1042,58 @@ fn scan_desktop_dir(dir: &std::path::Path, entries: &mut Vec<AppEntry>) -> anyho
 /// Productivity > Tools), not by the order tags appear — so e.g. Steam, which is
 /// `Network;FileTransfer;Game`, is classified as Gaming rather than Productivity.
 fn categorize(categories: &str) -> String {
-    let cats: Vec<&str> = categories.split(';').map(|c| c.trim()).filter(|c| !c.is_empty()).collect();
+    let cats: Vec<&str> = categories
+        .split(';')
+        .map(|c| c.trim())
+        .filter(|c| !c.is_empty())
+        .collect();
     let has = |group: &[&str]| cats.iter().any(|c| group.contains(c));
 
     if has(&["Game"]) {
         "Gaming"
-    } else if has(&["AudioVideo", "Audio", "Video", "Graphics", "Player", "Photography",
-        "Music", "Recorder", "TV"]) {
+    } else if has(&[
+        "AudioVideo",
+        "Audio",
+        "Video",
+        "Graphics",
+        "Player",
+        "Photography",
+        "Music",
+        "Recorder",
+        "TV",
+    ]) {
         "Media"
-    } else if has(&["Office", "Development", "IDE", "TextEditor", "WebBrowser", "Network",
-        "Email", "Finance", "Calendar", "Spreadsheet", "WordProcessor", "Presentation",
-        "Chat", "InstantMessaging"]) {
+    } else if has(&[
+        "Office",
+        "Development",
+        "IDE",
+        "TextEditor",
+        "WebBrowser",
+        "Network",
+        "Email",
+        "Finance",
+        "Calendar",
+        "Spreadsheet",
+        "WordProcessor",
+        "Presentation",
+        "Chat",
+        "InstantMessaging",
+    ]) {
         "Productivity"
-    } else if has(&["Utility", "System", "Settings", "Accessibility", "Security", "Archiving",
-        "Compression", "FileManager", "TerminalEmulator", "PackageManager", "Monitor",
-        "HardwareSettings"]) {
+    } else if has(&[
+        "Utility",
+        "System",
+        "Settings",
+        "Accessibility",
+        "Security",
+        "Archiving",
+        "Compression",
+        "FileManager",
+        "TerminalEmulator",
+        "PackageManager",
+        "Monitor",
+        "HardwareSettings",
+    ]) {
         "Tools"
     } else {
         "Other"
@@ -825,11 +1121,20 @@ pub fn resolve_icon_data_uri(icon: &str) -> Option<String> {
         "/usr/local/share/icons".to_string(),
     ];
     let themes = [
-        "hicolor", "Papirus", "Papirus-Dark", "Papirus-Light", "breeze", "breeze-dark",
-        "Adwaita", "gnome", "elementary",
+        "hicolor",
+        "Papirus",
+        "Papirus-Dark",
+        "Papirus-Light",
+        "breeze",
+        "breeze-dark",
+        "Adwaita",
+        "gnome",
+        "elementary",
     ];
     // Prefer SVG (scalable, crisp & small), then a tile-friendly size, large→small.
-    let size_dirs = ["scalable", "128x128", "96x96", "64x64", "48x48", "256x256", "32x32"];
+    let size_dirs = [
+        "scalable", "128x128", "96x96", "64x64", "48x48", "256x256", "32x32",
+    ];
     let exts = ["svg", "png", "xpm"];
 
     for base in &base_dirs {
@@ -887,7 +1192,7 @@ fn read_icon_file(path: &PathBuf) -> Option<String> {
 /// Minimal standard-alphabet base64 encoder (avoids pulling in a crate).
 fn b64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = *chunk.get(1).unwrap_or(&0) as u32;
@@ -895,8 +1200,16 @@ fn b64_encode(data: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         out.push(T[((n >> 18) & 63) as usize] as char);
         out.push(T[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            T[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }

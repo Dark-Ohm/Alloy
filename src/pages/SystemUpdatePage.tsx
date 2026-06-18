@@ -148,11 +148,6 @@ export function SystemUpdatePage() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'pacman' | 'yay' | null>(null)
 
-  useEffect(() => {
-    checkInformant()
-    return () => { unlistenRef.current?.() }
-  }, [])
-
   const checkInformant = useCallback(async () => {
     setCheckingInformant(true)
     try {
@@ -166,13 +161,21 @@ export function SystemUpdatePage() {
     setCheckingInformant(false)
   }, [])
 
+  useEffect(() => {
+    checkInformant()
+    return () => { unlistenRef.current?.() }
+  }, [checkInformant])
+
   const handleMarkRead = useCallback(async () => {
     try {
       await invoke('informant_read_all')
       setInformantPassed(true)
       setInformant(prev => prev ? { ...prev, hasUnread: false, message: 'All news marked as read.' } : null)
-    } catch { /* noop */ }
-  }, [])
+    } catch (e) {
+      console.error('Failed to mark news as read:', e)
+      store.setErrorBanner(`Failed to mark news as read: ${e}`)
+    }
+  }, [store])
 
   const previewUpgrade = useCallback(async (type: 'pacman' | 'yay') => {
     try {

@@ -1,30 +1,117 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Unified error type for Alloy backend operations.
+///
+/// This replaces ad-hoc `String`/`anyhow::Error` error handling with a structured
+/// error type that can be serialized to the frontend for proper error display.
+#[derive(Debug, thiserror::Error, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum AlloyError {
+    /// Io error (file not found, permission denied, etc.)
+    #[error("I/O error: {message}")]
+    Io { message: String },
+
+    /// Command execution failed (non-zero exit code)
+    #[error("Command failed (exit {code}): {stderr}")]
+    CommandFailed {
+        code: i32,
+        stdout: String,
+        stderr: String,
+    },
+
+    /// Package format not supported
+    #[error("Unsupported package format: {format}")]
+    UnsupportedFormat { format: String },
+
+    /// Package analysis failed (could not parse metadata)
+    #[error("Failed to analyze package: {message}")]
+    AnalysisFailed { message: String },
+
+    /// Dependency not found (e.g., pacman, yay, debtap not installed)
+    #[error("Missing dependency: {name}")]
+    MissingDependency { name: String },
+
+    /// Permission denied (pkexec/sudo failed)
+    #[error("Permission denied: {message}")]
+    PermissionDenied { message: String },
+
+    /// Network error (download failed, AUR unreachable)
+    #[error("Network error: {message}")]
+    Network { message: String },
+
+    /// Configuration error (invalid config, missing file)
+    #[error("Configuration error: {message}")]
+    Config { message: String },
+
+    /// Invalid input (bad package name, path, etc.)
+    #[error("Invalid input: {message}")]
+    InvalidInput { message: String },
+
+    /// Internal error (catch-all for unexpected failures)
+    #[error("Internal error: {message}")]
+    Internal { message: String },
+}
+
+impl From<std::io::Error> for AlloyError {
+    fn from(e: std::io::Error) -> Self {
+        AlloyError::Io {
+            message: e.to_string(),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AlloyError {
+    fn from(e: anyhow::Error) -> Self {
+        AlloyError::Internal {
+            message: e.to_string(),
+        }
+    }
+}
+
+/// Result type alias using AlloyError
+#[allow(dead_code)]
+pub type AlloyResult<T> = Result<T, AlloyError>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StreamEvent {
-    Stdout { line: String },
+    Stdout {
+        line: String,
+    },
     /// In-place redraw of the current line (pacman/yay `\r`-updated progress frame).
     /// The frontend replaces its live tail line rather than appending.
-    StdoutRedraw { line: String },
-    Stderr { line: String },
+    StdoutRedraw {
+        line: String,
+    },
+    Stderr {
+        line: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Progress { pkg_name: String, pkg_num: u32, pkg_total: u32, pct: u32 },
+    Progress {
+        pkg_name: String,
+        pkg_num: u32,
+        pkg_total: u32,
+        pct: u32,
+    },
     #[serde(rename_all = "camelCase")]
-    TransactionSummary { total_packages: u32, package_names: Vec<String> },
-    Exit { code: i32 },
-    Error { message: String },
+    TransactionSummary {
+        total_packages: u32,
+        package_names: Vec<String>,
+    },
+    Exit {
+        code: i32,
+    },
+    Error {
+        message: String,
+    },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DepStatus {
     pub installed: bool,
     pub path: Option<String>,
-}
-
-impl Default for DepStatus {
-    fn default() -> Self { Self { installed: false, path: None } }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,22 +200,35 @@ pub fn config_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(base).join("alloy")
 }
 
-pub fn config_path() -> std::path::PathBuf { config_dir().join("config.json") }
+pub fn config_path() -> std::path::PathBuf {
+    config_dir().join("config.json")
+}
 
 pub fn load_config() -> HashMap<String, serde_json::Value> {
-    std::fs::read_to_string(config_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    std::fs::read_to_string(config_path())
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 pub fn save_config(cfg: &HashMap<String, serde_json::Value>) {
     let _ = std::fs::create_dir_all(config_dir());
-    let _ = std::fs::write(config_path(), serde_json::to_string_pretty(cfg).unwrap_or_default());
+    let _ = std::fs::write(
+        config_path(),
+        serde_json::to_string_pretty(cfg).unwrap_or_default(),
+    );
 }
 
 pub fn track_install(name: &str, version: &str, kind: &str) {
     let mut cfg = load_config();
-    let installs = cfg.entry("installed".to_string()).or_insert_with(|| serde_json::json!({}));
+    let installs = cfg
+        .entry("installed".to_string())
+        .or_insert_with(|| serde_json::json!({}));
     if let Some(obj) = installs.as_object_mut() {
-        obj.insert(name.to_string(), serde_json::json!({"version": version, "kind": kind}));
+        obj.insert(
+            name.to_string(),
+            serde_json::json!({"version": version, "kind": kind}),
+        );
     }
     save_config(&cfg);
 }
@@ -149,8 +249,16 @@ pub fn list_tracked_installs() -> Vec<(String, String, String)> {
     if let Some(installs) = cfg.get("installed") {
         if let Some(obj) = installs.as_object() {
             for (name, val) in obj {
-                let version = val.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let kind = val.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let version = val
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let kind = val
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 result.push((name.clone(), version, kind));
             }
         }
@@ -161,6 +269,7 @@ pub fn list_tracked_installs() -> Vec<(String, String, String)> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct PackageSecurityInfo {
     pub package: String,
     pub compromised: bool,

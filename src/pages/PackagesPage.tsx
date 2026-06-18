@@ -68,9 +68,12 @@ export function PackagesPage() {
       const cmd = aurMode ? 'yay_search' : 'pacman_search'
       const [stdout] = await invoke<[string, string, number]>(cmd, { query })
       store.setSearchResults(parseSearch(stdout))
-    } catch { /* noop */ }
+    } catch (e) {
+      console.error('Search failed:', e)
+      store.setErrorBanner(`Search failed: ${e}`)
+    }
     setSearchLoading(false)
-  }, [query, aurMode])
+  }, [query, aurMode, store])
 
   const doInstalled = useCallback(async () => {
     setSearchLoading(true)
@@ -80,9 +83,12 @@ export function PackagesPage() {
         const p = l.trim().split(/\s+/)
         return { repo: '', name: p[0] || '', version: p[1] || '', description: '' }
       }))
-    } catch { /* noop */ }
+    } catch (e) {
+      console.error('Failed to list installed packages:', e)
+      store.setErrorBanner(`Failed to list installed packages: ${e}`)
+    }
     setSearchLoading(false)
-  }, [])
+  }, [store])
 
   const toggle = (i: number) => setSelected((prev: Set<number>) => {
     const n = new Set(prev)
