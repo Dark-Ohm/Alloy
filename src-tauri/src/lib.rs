@@ -4,7 +4,11 @@ mod malware_check;
 mod models;
 mod services;
 
-use tauri::{Manager, Emitter, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent, MouseButton}};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager,
+};
 
 pub fn run() {
     std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
@@ -86,7 +90,13 @@ pub fn run() {
         .setup(|app| {
             // Create tray menu
             let show = MenuItem::with_id(app, "show", "Show Alloy", true, None::<&str>)?;
-            let check_updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
+            let check_updates = MenuItem::with_id(
+                app,
+                "check_updates",
+                "Check for Updates",
+                true,
+                None::<&str>,
+            )?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &check_updates, &quit])?;
 
@@ -95,29 +105,31 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Alloy — Arch Package Dropper")
                 .menu(&menu)
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.unminimize();
-                                let _ = window.set_focus();
-                            }
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
                         }
-                        "check_updates" => {
-                            let app_handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let _ = app_handle.emit("check-updates", ());
-                            });
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "check_updates" => {
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = app_handle.emit("check-updates", ());
+                        });
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();

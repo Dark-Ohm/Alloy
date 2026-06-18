@@ -29,7 +29,10 @@ export default function App() {
         if (hasUpdates) {
           setErrorBanner('System updates available — open System Update page to review')
         }
-      } catch { /* noop */ }
+      } catch (e) {
+        console.error('Failed to check for updates:', e)
+        // Don't show banner for background update check failures
+      }
     }
     checkUpdates()
     const interval = setInterval(checkUpdates, 30 * 60 * 1000)
@@ -45,7 +48,9 @@ export default function App() {
         if (hasUpdates) {
           setErrorBanner('System updates available — open System Update page to review')
         }
-      } catch { /* noop */ }
+      } catch (e) {
+        console.error('Failed to check for updates:', e)
+      }
     }).then(fn => { unlisten = fn })
     return () => { if (unlisten) unlisten() }
   }, [setErrorBanner])

@@ -1,10 +1,76 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
     schedule:
-      interval: weekly
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+      - "rust"
     groups:
-      frontend:
+      rust-dev-deps:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  # npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+      - "npm"
+    groups:
+      dev-deps:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+          - "vite*"
+        update-types:
+          - "minor"
+          - "patch"
+      frontend-deps:
+        patterns:
+          - "react*"
+          - "zustand*"
+          - "lucide-react*"
+          - "clsx*"
+          - "@tauri-apps/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci):"
+    labels:
+      - "dependencies"
+      - "github-actions"

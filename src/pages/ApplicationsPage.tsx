@@ -127,7 +127,9 @@ function AppModal({ app, onClose, onRemoved }: {
           })
           pkg = out.trim() || null
         }
-      } catch { /* noop */ }
+      } catch (e) {
+        console.error('Failed to find package owning binary:', e)
+      }
 
       let version = '', description = '', installedSize = ''
       const deps: string[] = []
@@ -148,7 +150,9 @@ function AppModal({ app, onClose, onRemoved }: {
               if (name) deps.push(name)
             }
           }
-        } catch { /* noop */ }
+        } catch (e) {
+          console.error(`Failed to query package info for ${pkg}:`, e)
+        }
       }
       if (alive) { setDetail({ pkg, version, description, installedSize, deps }); setLoading(false) }
     })()

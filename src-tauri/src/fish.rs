@@ -20,8 +20,14 @@ const FISH: &str = "/usr/bin/fish";
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PKG_VERBS: &[&str] = &[
-    "installing", "upgrading", "downloading", "reinstalling", "removing",
-    "checking", "loading", "downgrading",
+    "installing",
+    "upgrading",
+    "downloading",
+    "reinstalling",
+    "removing",
+    "checking",
+    "loading",
+    "downgrading",
 ];
 
 /// Strip the version/rel/arch suffix from a pacman package entry, leaving the
@@ -75,7 +81,7 @@ fn parse_progress(line: &str, committed_default: u32) -> Option<(u32, u32, Strin
     let pct = line
         .split_whitespace()
         .filter_map(|t| t.strip_suffix('%').and_then(|d| d.parse::<u32>().ok()))
-        .last()
+        .next_back()
         .unwrap_or(committed_default)
         .min(100);
 
@@ -92,7 +98,12 @@ struct PacmanParser {
 
 impl PacmanParser {
     fn new() -> Self {
-        Self { total: 0, collecting_summary: false, summary_names: Vec::new(), summary_emitted: false }
+        Self {
+            total: 0,
+            collecting_summary: false,
+            summary_names: Vec::new(),
+            summary_emitted: false,
+        }
     }
 
     /// Handle one output frame. `committed` = terminated by `\n` (a real line);
@@ -100,9 +111,13 @@ impl PacmanParser {
     fn on_frame(&mut self, raw: &str, tx: &mpsc::Sender<StreamEvent>, committed: bool) {
         if !raw.is_empty() {
             let ev = if committed {
-                StreamEvent::Stdout { line: raw.to_string() }
+                StreamEvent::Stdout {
+                    line: raw.to_string(),
+                }
             } else {
-                StreamEvent::StdoutRedraw { line: raw.to_string() }
+                StreamEvent::StdoutRedraw {
+                    line: raw.to_string(),
+                }
             };
             let _ = tx.try_send(ev);
         }
@@ -120,9 +135,8 @@ impl PacmanParser {
                     return;
                 }
             } else if self.collecting_summary {
-                let ends_block = trimmed.is_empty()
-                    || trimmed.starts_with("Total")
-                    || trimmed.starts_with(':');
+                let ends_block =
+                    trimmed.is_empty() || trimmed.starts_with("Total") || trimmed.starts_with(':');
                 if ends_block {
                     let _ = tx.try_send(StreamEvent::TransactionSummary {
                         total_packages: self.total,
@@ -172,7 +186,11 @@ impl PacmanParser {
 }
 
 pub async fn exec_one(script: &str) -> anyhow::Result<(String, String, i32)> {
-    let out = Command::new(FISH).arg("-c").arg(script).output().await
+    let out = Command::new(FISH)
+        .arg("-c")
+        .arg(script)
+        .output()
+        .await
         .map_err(|e| anyhow::anyhow!("fish failed: {e}"))?;
     Ok((
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -184,7 +202,11 @@ pub async fn exec_one(script: &str) -> anyhow::Result<(String, String, i32)> {
 /// Run a command with streaming output.
 /// Uses piped stdout/stderr with SUDO_ASKPASS for sudo authentication via GUI dialog.
 /// PTY mode is unreliable with sudo; piped mode works reliably.
-pub async fn exec_streaming(script: &str, pkexec: bool, tx: mpsc::Sender<StreamEvent>) -> anyhow::Result<()> {
+pub async fn exec_streaming(
+    script: &str,
+    pkexec: bool,
+    tx: mpsc::Sender<StreamEvent>,
+) -> anyhow::Result<()> {
     let script = script.to_string();
 
     if pkexec {
@@ -215,11 +237,19 @@ fi
 }
 
 /// Piped stdout/stderr — used for both pkexec (root) and askpass (user + SUDO_ASKPASS) modes.
-async fn exec_streaming_piped(script: &str, tx: mpsc::Sender<StreamEvent>, use_askpass: bool) -> anyhow::Result<()> {
+async fn exec_streaming_piped(
+    script: &str,
+    tx: mpsc::Sender<StreamEvent>,
+    use_askpass: bool,
+) -> anyhow::Result<()> {
     let script = script.to_string();
     let tx_io = tx.clone();
     let tx_exit = tx.clone();
-    let askpass = if use_askpass { create_askpass_script() } else { None };
+    let askpass = if use_askpass {
+        create_askpass_script()
+    } else {
+        None
+    };
     let askpass_cleanup = askpass.clone();
 
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<i32> {
@@ -237,7 +267,8 @@ async fn exec_streaming_piped(script: &str, tx: mpsc::Sender<StreamEvent>, use_a
         };
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| anyhow::anyhow!("spawn failed: {e}"))?;
 
         let stdout = child.stdout.take().unwrap();
@@ -284,7 +315,9 @@ async fn exec_streaming_piped(script: &str, tx: mpsc::Sender<StreamEvent>, use_a
         let _ = h1.join();
         let _ = h2.join();
 
-        let status = child.wait().map_err(|e| anyhow::anyhow!("wait failed: {e}"))?;
+        let status = child
+            .wait()
+            .map_err(|e| anyhow::anyhow!("wait failed: {e}"))?;
         let code = status.code().unwrap_or(-1);
 
         let _ = tx_exit.blocking_send(StreamEvent::Exit { code });
@@ -294,11 +327,17 @@ async fn exec_streaming_piped(script: &str, tx: mpsc::Sender<StreamEvent>, use_a
     .map_err(|e| anyhow::anyhow!("task panicked: {e}"))?;
 
     if let Err(e) = result {
-        let _ = tx.send(StreamEvent::Stdout { line: format!("Error: {e}") }).await;
+        let _ = tx
+            .send(StreamEvent::Stdout {
+                line: format!("Error: {e}"),
+            })
+            .await;
         let _ = tx.send(StreamEvent::Exit { code: 1 }).await;
     }
 
-    if let Some(path) = askpass_cleanup { let _ = std::fs::remove_file(path); }
+    if let Some(path) = askpass_cleanup {
+        let _ = std::fs::remove_file(path);
+    }
     Ok(())
 }
 
@@ -371,9 +410,16 @@ Total Download Size:   247.33 MiB
         let events = drain(&mut rx);
 
         // Exactly one TransactionSummary, with all 12 names version-stripped.
-        let summaries: Vec<_> = events.iter().filter(|e| matches!(e, StreamEvent::TransactionSummary { .. })).collect();
+        let summaries: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::TransactionSummary { .. }))
+            .collect();
         assert_eq!(summaries.len(), 1, "should emit summary exactly once");
-        if let StreamEvent::TransactionSummary { total_packages, package_names } = summaries[0] {
+        if let StreamEvent::TransactionSummary {
+            total_packages,
+            package_names,
+        } = summaries[0]
+        {
             assert_eq!(*total_packages, 12);
             assert_eq!(package_names.len(), 12);
             assert_eq!(package_names[0], "glibc");
@@ -383,11 +429,22 @@ Total Download Size:   247.33 MiB
         }
 
         // Two Progress events, in order, with bare names.
-        let progress: Vec<_> = events.iter().filter_map(|e| match e {
-            StreamEvent::Progress { pkg_name, pkg_num, pkg_total, pct } => Some((pkg_name.as_str(), *pkg_num, *pkg_total, *pct)),
-            _ => None,
-        }).collect();
-        assert_eq!(progress, vec![("glibc", 1, 12, 100), ("linux-headers", 2, 12, 100)]);
+        let progress: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::Progress {
+                    pkg_name,
+                    pkg_num,
+                    pkg_total,
+                    pct,
+                } => Some((pkg_name.as_str(), *pkg_num, *pkg_total, *pct)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            progress,
+            vec![("glibc", 1, 12, 100), ("linux-headers", 2, 12, 100)]
+        );
     }
 
     #[test]
@@ -417,7 +474,9 @@ Total Download Size:   247.33 MiB
         parser.on_frame("(7/12) mesa  [######    ] 60%", &tx, false);
         let events = drain(&mut rx);
 
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::StdoutRedraw { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::StdoutRedraw { .. })));
         let last_pct = events.iter().rev().find_map(|e| match e {
             StreamEvent::Progress { pct, pkg_name, .. } if pkg_name == "mesa" => Some(*pct),
             _ => None,

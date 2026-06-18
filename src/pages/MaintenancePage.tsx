@@ -177,13 +177,17 @@ export function MaintenancePage() {
 
   // ── Load current state on mount ──────────────────────────────────────
   const refreshFacts = useCallback(async () => {
-    try { setCacheSize(await invoke<string>('disk_usage')) } catch { /* noop */ }
+    try { setCacheSize(await invoke<string>('disk_usage')) } catch (e) {
+      console.error('Failed to get disk usage:', e)
+    }
     try {
       const [out] = await invoke<[string, string, number]>('fish_shot', {
         script: 'pacman -Qtdq | wc -l',
       })
       setOrphanCount(parseInt(out.trim()) || 0)
-    } catch { /* noop */ }
+    } catch (e) {
+      console.error('Failed to check orphan packages:', e)
+    }
   }, [])
 
   useEffect(() => { refreshFacts() }, [refreshFacts])
@@ -331,7 +335,9 @@ export function MaintenancePage() {
             script: `diff -u '${target.replace(/'/g, "'\\''")}' '${file.replace(/'/g, "'\\''")}' 2>&1 | head -400`,
           })
           diff = out.trim()
-        } catch { /* noop */ }
+        } catch (e) {
+          console.error(`Failed to diff ${file}:`, e)
+        }
         const { added, removed, verdict, reason } = analyzeDiff(diff, sensitive)
         return { file, target, title, what, diff, added, removed, verdict, reason, sensitive }
       }))

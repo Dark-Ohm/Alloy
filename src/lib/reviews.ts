@@ -18,12 +18,16 @@ export function getReactions(pkg: string): AppReactions {
   try {
     const raw = localStorage.getItem(KEY(pkg))
     if (raw) return JSON.parse(raw) as AppReactions
-  } catch { /* noop */ }
+  } catch (e) {
+    console.error('Failed to read reactions from localStorage:', e)
+  }
   return seed(pkg)
 }
 
 export function saveReactions(pkg: string, data: AppReactions): void {
-  try { localStorage.setItem(KEY(pkg), JSON.stringify(data)) } catch { /* noop */ }
+  try { localStorage.setItem(KEY(pkg), JSON.stringify(data)) } catch (e) {
+    console.error('Failed to save reactions to localStorage:', e)
+  }
 }
 
 export function toggleVote(pkg: string, vote: 'like' | 'dislike'): AppReactions {

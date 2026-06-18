@@ -29,7 +29,10 @@ export function DropZone() {
     try {
       const result = await invoke<Array<[string, string, string]>>('list_tracked_packages')
       setForeignPkgs(result.map(([name, version, kind]) => ({ name, version, kind })))
-    } catch { /* noop */ }
+    } catch (e) {
+      console.error('Failed to load foreign packages:', e)
+      store.setErrorBanner(`Failed to load package list: ${e}`)
+    }
     setForeignLoading(false)
   }, [store])
 

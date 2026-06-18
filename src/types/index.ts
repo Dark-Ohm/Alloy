@@ -135,3 +135,6 @@ export interface PackageSecurityInfo {
   compromised: boolean
   knownCompromisedCount: number
 }
+
+// ── Re-export error types
+export * from './error'
